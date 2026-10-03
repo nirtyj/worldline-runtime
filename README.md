@@ -388,3 +388,8 @@ baseline/     a naive sequential runtime, for contrast
 sim/          clock (one clock for everything; speed and pause), event log, goals
 runs/         memory/, episodes/, procedures.json, eval/, procthor/ (not committed)
 ```
+
+## License
+
+Copyright © 2026 nirtyj. All rights reserved. The code is public so you can read it and run it to
+try it out; please ask before reusing, modifying or redistributing any part of it. See [LICENSE](LICENSE).
