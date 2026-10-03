@@ -1,0 +1,7 @@
+ai2thor==5.0.0
+prior==1.0.3
+numpy
+pillow
+websockets>=13
+google-genai
+typesafe-sdk  # only for the Jev labeller (brains/system1_jev.py) and its tests

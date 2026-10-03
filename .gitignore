@@ -1,0 +1,11 @@
+.env
+.env.*
+runs/
+__pycache__/
+*.pyc
+.venv-thor/
+.venv*/
+.DS_Store
+*.zip
+*.log
+node_modules/
