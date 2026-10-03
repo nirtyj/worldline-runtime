@@ -391,5 +391,5 @@ runs/         memory/, episodes/, procedures.json, eval/, procthor/ (not committ
 
 ## License
 
-Copyright © 2026 nirtyj. All rights reserved. The code is public so you can read it and run it to
+Copyright © 2026 Nirtyanath Jaganathan. All rights reserved. The code is public so you can read it and run it to
 try it out; please ask before reusing, modifying or redistributing any part of it. See [LICENSE](LICENSE).
