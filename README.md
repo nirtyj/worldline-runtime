@@ -92,6 +92,130 @@ quiet; the Quiet switch under the chat lets it act.
 
 More detail, with sequence diagrams and every rule: [docs/architecture.md](docs/architecture.md).
 
+## The planner
+
+The planner (`agent/model.py`, Gemini 3.8 Flash) decides one step at a time. Each turn it gets a
+system prompt (the world, how to find things, how to deliver, the rules) and one text the runtime
+builds from belief, and it must answer with **exactly one tool call**: the client forces it
+(Gemini function calling mode `ANY`), and the tool schemas list only the spots on the map and
+the object ids in belief as valid values.
+
+**What it reads each turn**, in this order: `TIME` and the current request version, `MAP`
+(spots, surfaces, rooms, people), `LAYOUT` (what is next to what, worked out in code),
+`CONVERSATION`, `BELIEF` (only what matters now), `LOOKED AT`, `NOTES` (what you told it),
+`NOTICED` (what System 1 saw, unverified), `ACTIONS` (recent, with results; late ones marked),
+`RUNNING NOW`, `LEARNED FROM PAST TASKS` (procedural guidance), `OWN GOAL` (from the soul) and
+`NOTE` (why its last call was rejected). It never sees the simulator.
+
+**Its tools** (`brains/interface.py`):
+
+| Tool | Arguments | Kind | What happens |
+|---|---|---|---|
+| `say` | `text` | speech | Queued and played in order; doesn't block anything. Dropped if it repeats the last line, or if nobody asked for anything. |
+| `recall` | `query` | memory | Answered locally from memory, instantly, no model call; the answer comes back in `ACTIONS` and the planner is asked again. |
+| `look` | | sense | Scans the surfaces at the current spot and both hands; updates belief. The planner is asked again when it's done. |
+| `reachability` | `object` | sense | Can it be picked from here, and with which arm. Required before every pick. |
+| `navigate` | `to` (a spot) | body | Drives there in the background; the robot keeps listening. |
+| `pick` | `object`, `arm` | body | Grasps in timed chunks; a cancel lands between chunks. Followed by a look to verify. |
+| `place` | `object`, `arm`, optional `goal` | body | Puts it on the surface in front. `goal` ("other side of stove_1 from counter_1a", "next to X", "between X and Y"...) is checked against the layout after the place. |
+| `wait` | | | Nothing to do until something changes: you speak, or an action finishes. |
+
+**How a turn runs** (`Runtime._think` in `agent/harness.py`):
+
+1. Ask the planner (20 s timeout). If you changed the request or said stop while it was
+   thinking, the answer is dropped as stale.
+2. `say` and `recall` are handled at once, and the planner is asked again.
+3. Every other call is **checked** first. A rejection goes back to the planner as `NOTE` with
+   what to do instead; after three in a row the runtime stops asking until something changes.
+4. A sense call (`look`, `reachability`) runs, and the planner is asked again with the result.
+5. A body call (`navigate`, `pick`, `place`) starts in the background and the turn ends; the
+   planner is asked again when it finishes or you say something. After a pick or place the
+   runtime looks on its own, because a success flag is only a claim.
+
+Up to 40 decisions per wake-up. **The checks** include:
+- `pick` needs a successful `reachability` from this spot, with the arm it named, and a hand
+  known to be empty; two failed grasps of the same object mean tell the user instead.
+- `place` needs the hand verified to hold the object, and a surface at this spot; a `goal` must
+  parse into one of the layout's relations.
+- `navigate` needs a known spot; a spot that couldn't be reached twice means tell the user.
+- No body action while you've said stop, while another one is running, or when nobody asked for
+  anything and there's no own goal. While cancelled actions are being settled, it waits.
+- An own goal (from the soul) may use only the tools its soul allows.
+
+**Labels:** when System 1 isn't confident (or isn't running), the planner labels the message:
+first by rule ("stop"; "go ahead" while paused; a short answer right after the robot asked a
+question), otherwise with one forced `classify` call. If that fails or times out (8 s), keywords
+decide.
+
+## Memory
+
+Memory is saved per house and carries over to the next session. Only the runtime writes it,
+and only from verified belief: a model's claim never becomes memory.
+
+| Memory | Stored in | Written | Read |
+|---|---|---|---|
+| **Spatial**: where things are, and where they usually are | `runs/memory/<house>.json` | whenever verified belief changes (10 Hz loop), and when the session ends | loaded into belief at session start as *remembered* (unverified: go and look); `recall` |
+| **Notes**: what you told it ("my keys are usually on the counter") | the same file, up to 30 | when a message is labelled an observation | `NOTES` in every prompt; `recall` |
+| **Noticed**: what System 1 saw that the object list can't hold | the same file, up to 40 | after each Gemini Live observation | `NOTICED` in the prompt (unverified hints); the Memory tab |
+| **Episodic**: what happened, session by session | `runs/episodes/<house>/<stamp>.jsonl` | every event as it happens (a crash still leaves a record): what you said and how it was labelled, decisions, actions and results, deliveries, corrections, stops, own goals | `recall` ("what did I ask for last time"); the procedural graph |
+| **Procedural**: what usually works next | `runs/procedures.json` | recounted at start from the last 200 sessions | `LEARNED FROM PAST TASKS`: up to three next steps for the step the task is at |
+
+**Spatial** keeps each object's last 8 sightings, so it knows where a thing *usually* is, not only
+where it was last. Each object has a status: `seen` (on a surface), `held` (in a hand), `missed`
+(looked for and not there: a stable thing keeps its place once), `moved` (missing again, or a
+thing that moves around: no current place, but the usual place remains). It also keeps landmarks
+(the fridge, the stove) and which spots were looked at, and when.
+
+**Procedural** is a graph of steps (`navigate:ok`, `reachability:not_seen_here`, `pick:ok`,
+`say`...) with edges counted from tasks that ended well or badly; an edge needs at least two tasks
+behind it before it's suggested. Short learned rules ("after place:ok, say") can be proposed by a
+model comparing failed and successful tasks, and are used only once they survive a scenario-suite
+run without making it worse (`eval/evolve.py`). The graph only suggests; the runtime's rules
+still decide.
+
+### Recall
+
+`recall(query)` lets the planner ask memory instead of carrying all of it in every prompt
+(`agent/recall.py`). It answers locally and instantly from belief, spatial memory, notes and the
+episode log, with no model call and nothing moving, in at most 1,100 characters:
+
+| Query | Answer |
+|---|---|
+| `recall("mug")` | where the mug is (seen when), where it was, and where it usually is |
+| `recall("kitchen")` | what's known to be in the kitchen, surface by surface |
+| `recall("keys")` | also the notes you gave it that mention keys |
+| `recall("what did I ask for last time")` | requests and deliveries from earlier sessions |
+| `recall("counter_1a")` | what's on it, and what it's next to (the layout) |
+
+## The robot API
+
+The runtime drives the robot only through this interface (`thor/robot.py`, here backed by
+AI2-THOR), so a real robot can stand in by implementing the same calls:
+
+| Call | Returns |
+|---|---|
+| `lookup_keypoints()` | the map: spots, the surfaces reached from each, rooms, people, and path lengths between spots |
+| `perception()` | what the head camera sees now: objects, landmarks and people in view, with labels and positions |
+| `telemetry()` | base pose and motion, gripper and arm state |
+| `send_goal(skill, **args)` | a goal: `goal.cancel()` requests a cancel, `await goal.result()` gives `SUCCEEDED`, `ABORTED` or `CANCELED` with data. Raises `GoalRejected` if it can't start. |
+| `halt()` | the hardware stop: base and arms freeze at once; running motion ends `ABORTED` |
+| `events()`, `active_goals()`, `idle()`, `shutdown()` | the event stream, what's running, and teardown |
+
+| Skill | Arguments | Result data | A cancel... |
+|---|---|---|---|
+| `navigate` | `to` | `at`; or `reason` (`no_path`, `halted`) | stops at the next grid point (every 0.25 m), maybe between spots |
+| `look` | `glance` (optional) | `at`, `surfaces` (what's on each), `landmarks`, `hands` | stops at once |
+| `reachability` | `object` | `reachable`, `arm`; or `reason` (`not_seen_here`, `too_far`, `hand_full`...) | stops at once |
+| `pick` | `object`, `arm` | `holding`; or `reason` (`grasp_failed`, `halted`) | waits for the running chunk (about 1 s); a cancel during "close" still ends holding it |
+| `place` | `object`, `arm` | `surface`; or `reason` (`no_surface_here`, `no_room_on_surface`) | waits for the running chunk |
+| `say` | `text` | `played` (seconds, when cut off) | cuts off at once |
+
+`agent/skills.py` wraps each skill with a timeout (navigate: from the path length; look and
+reachability 12 s; pick 15 s; place 12 s), adding `TIMEOUT` and `REJECTED` to the statuses.
+
+In the simulator, `perception()` reports the objects actually in the head camera's view, with
+exact labels: a stand-in for a detector. The runtime never sees anything beyond that.
+
 ## Set up and run
 
 You need Python 3.11 and two keys:
