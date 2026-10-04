@@ -3,12 +3,15 @@
 
     .venv-thor/bin/python ui/server.py        # then open http://localhost:8765
 
+Another world plugs in with --world module:factory (sim/world.py is the contract), and
+another way of seeing with --perception module:factory (perception/source.py).
+
 Keys come from .env: GEMINI_API_KEY (the planner, Gemini 3.8 Flash) and, only if
 you pick Claude in the model menu, ANTHROPIC_API_KEY.
 
     chat ──(text)──► InteractiveUser.next() ──► Runtime (agent/) ──► CompositeBrain ──► planner
                                                    │   ▲                (classify, next step)
-    AI2-THOR room ◄── ThorRobot (nav, arms, say) ◄─┘   └── perception + body sense (fused state)
+    AI2-THOR room ◄── SimRobot (nav, arms, say) ◄──┘   └── perception + body sense (fused state)
          │
          └── head + overhead camera ──► the page
 
@@ -54,11 +57,11 @@ from brains.frame_gate import FrameGate  # noqa: E402
 from brains.interface import BrainInfo  # noqa: E402
 from sim.clock import SimClock  # noqa: E402
 from sim.log import EventLog  # noqa: E402
-from thor import SCENES, ThorRobot, ThorWorld  # noqa: E402
+from sim.robot import SimRobot  # noqa: E402
+from sim.world import World  # noqa: E402
 from ui.interactive_user import InteractiveUser  # noqa: E402
 from ui.recorder import CallRecorder  # noqa: E402
 from ui.robot_map import RobotMap  # noqa: E402
-from thor.world import GRID  # noqa: E402
 
 INDEX = Path(__file__).resolve().parent / "index.html"
 LOG_DIR = ROOT / "runs" / "playground"
@@ -66,6 +69,11 @@ TICK_S = 0.2
 HEAD_EVERY_S = 0.2
 TOP_EVERY_S = 1.0
 PLANNER = "agent.model:create_brain"
+# The world plugs in here: "module:factory", where factory() returns a World (sim/world.py).
+WORLD = "thor:create_world"
+# How the robot sees: "module:factory", where factory(world) returns a perception source
+# (perception/source.py). Unset: the stand-in, the world's own object list limited to the camera's view.
+PERCEPTION: str | None = None
 # System 1 plugs in here: "module:factory", where factory(on_status) returns an object with
 # `status`, and async run(), route(text), update(context), frame(jpeg, where), robot_said(text)
 # and observe() (see brains/interface.py System1). Unset: the planner classifies every message.
@@ -157,7 +165,7 @@ def dumps(msg: dict[str, Any]) -> str:
 class Session:
     """One room, one runtime, one brain, fed by the chat box."""
 
-    def __init__(self, world: ThorWorld, scene: str, agent: str, model: str,
+    def __init__(self, world: World, scene: str, agent: str, model: str,
                  soul: str = "robot", speed: float = 1.0, soul_text: str | None = None) -> None:
         self.world, self.scene, self.agent, self.model = world, scene, agent, model
         self.soul, self.speed, self.soul_text = soul, speed, soul_text
@@ -177,10 +185,11 @@ class Session:
         self.clock = SimClock(self.speed)        # real models run in wall time; slower is for talking over it
         self.log = EventLog(self.clock)
         self.layout = await self.world.call(self.world.load, self.scene)
-        self.robot_map = RobotMap(set(self.layout.grid), GRID)     # what the robot itself knows of the space
+        self.robot_map = RobotMap(set(self.layout.grid), self.layout.grid_step)   # what the robot itself knows of the space
         self.world.on_slow = lambda name, queued, ran: self.log.emit(
             "slow_sim_call", call=name, queued_s=queued, ran_s=ran)
-        self.robot = ThorRobot(self.world, self.clock, self.log)
+        perception = _import(PERCEPTION)(self.world) if PERCEPTION else None
+        self.robot = SimRobot(self.world, self.clock, self.log, perception)
         self.user = InteractiveUser(self.clock, self.log)
         self.map = self.robot.lookup_keypoints()
         model, _, mode = self.model.partition(":")
@@ -285,7 +294,7 @@ class Session:
             "surfaces": {s.name: {"desc": s.desc, "x": s.center[0], "z": s.center[1], "height": s.height}
                          for s in lay.surfaces.values()},
             "user_surface": lay.user_surface, "human": human,
-            "grid": sorted([list(c) for c in lay.grid]), "grid_step": GRID,   # the nav stack's free cells
+            "grid": sorted([list(c) for c in lay.grid]), "grid_step": lay.grid_step,   # the nav stack's free cells
             "rooms": {k: {"label": r["label"], "x": r["center"][0], "z": r["center"][1],
                           "polygon": [list(p) for p in r.get("polygon") or []]} for k, r in lay.rooms.items()},
         }
@@ -426,9 +435,9 @@ class Session:
 
 
 class Hub:
-    def __init__(self, scene: str, soul: str = "robot", speed: float = 1.0) -> None:
+    def __init__(self, scene: str, soul: str = "robot", speed: float = 1.0, world: World | None = None) -> None:
         self.clients: set[Any] = set()
-        self.world = ThorWorld()
+        self.world = world if world is not None else _import(WORLD)()
         self.session: Session | None = None
         self.default = scene
         self.soul = soul                             # the robot's soul, kept across sessions
@@ -486,7 +495,7 @@ class Hub:
                     last_ctx, last_ctx_t = ctx, now
                 rev = self.world.frame_rev
                 if rev != last_rev:
-                    frame, pose = await self.world.call(lambda: (self.world.event.frame, self.world.agent_pose()))
+                    frame, pose = await self.world.call(lambda: (self.world.frame(), self.world.agent_pose()))
                     if any(t in ("pick", "place") for t in ctx.get("running") or []):
                         last_own_t = now
                     own = now - last_own_t < S1_OWN_GRACE_S     # and the check right after it
@@ -550,7 +559,7 @@ class Hub:
 
     def meta(self) -> dict[str, Any]:
         models = [m for m in MODELS if not m[0].startswith("claude") or os.environ.get("ANTHROPIC_API_KEY")]
-        return {"scenes": SCENES, "agents": AGENTS, "models": models, "souls": SOULS, "custom_soul": self.custom_soul,
+        return {"scenes": self.world.scenes(), "agents": AGENTS, "models": models, "souls": SOULS, "custom_soul": self.custom_soul,
                 "anthropic_key": bool(os.environ.get("ANTHROPIC_API_KEY")),
                 "gemini_key": bool(os.environ.get("GEMINI_API_KEY")),
                 "system1": {"status": self.s1_status, "detail": self.s1_detail}}
@@ -778,23 +787,29 @@ def process_request(connection: Any, request: Any) -> Any:
 
 
 async def main() -> None:
+    global PERCEPTION
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--host", default="127.0.0.1")
-    ap.add_argument("--scene", default="procthor-train-40",
-                    help="an iTHOR room (FloorPlan1 kitchen, FloorPlan301 bedroom) or a ProcTHOR house (procthor-train-7)")
+    ap.add_argument("--scene", help="a room the world offers; the first one if not given. For AI2-THOR, an iTHOR "
+                                     "room (FloorPlan1 kitchen, FloorPlan301 bedroom) or a ProcTHOR house (procthor-train-7)")
     ap.add_argument("--soul", default="robot", choices=[n for n, _ in SOULS if n != "custom"],
                     help="the robot's soul, personas/<soul>.md (the page's Soul menu changes it too)")
     ap.add_argument("--soul-file", type=Path,
                     help="a custom soul in the personas/*.md format; it becomes the Soul menu's Custom… entry and is used")
     ap.add_argument("--speed", type=float, default=1.0,
                     help="sim seconds per wall second: 0.5 runs the robot at half speed (the models still answer in wall time)")
+    ap.add_argument("--world", default=WORLD,
+                    help="the world, as module:factory (sim/world.py); the default is AI2-THOR")
+    ap.add_argument("--perception", default=PERCEPTION,
+                    help="how the robot sees, as module:factory taking the world (perception/source.py); "
+                         "the default is the stand-in detector")
     args = ap.parse_args()
     load_dotenv(ROOT / ".env")
-    killed = ThorWorld.reap_orphans()            # simulators left by servers that died without stopping them
-    if killed:
-        print(f"[thor] stopped {len(killed)} orphaned simulator(s): {killed}", flush=True)
-    hub = Hub(args.scene, args.soul, args.speed)
+    PERCEPTION = args.perception
+    world = _import(args.world)()
+    scene = args.scene or world.scenes()[0][0]
+    hub = Hub(scene, args.soul, args.speed, world=world)
     if args.soul_file:
         hub.custom_soul, hub.soul = args.soul_file.read_text(), "custom"
     atexit.register(hub.world.close)             # last resort; close() is safe to call twice
@@ -807,8 +822,8 @@ async def main() -> None:
             return
         hub.start_system1()
         async with server:
-            print(f"Worldline on http://{args.host}:{args.port}  (loading {args.scene}…)", flush=True)
-            await hub.reset(args.scene, "agent", MODELS[0][0])
+            print(f"Worldline on http://{args.host}:{args.port}  (loading {scene}…)", flush=True)
+            await hub.reset(scene, "agent", MODELS[0][0])
             if hub.session and hub.session.error:
                 print(hub.session.error, file=sys.stderr)
             print("ready", flush=True)

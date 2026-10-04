@@ -18,7 +18,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
-VIEW_M = 1.5          # the detector's range for objects (thor/world.py REACH_M)
+VIEW_M = 1.5          # the detector's range for objects (sim/layout.py REACH_M)
 HALF_FOV = 45.0       # the head camera sees 90°
 LOOK_HALF = 85.0      # a look turns the head ±40° on top of that
 
@@ -69,7 +69,7 @@ class RobotMap:
                 if d > VIEW_M:
                     continue
                 if d > s:                                   # its own cell always counts
-                    heading = math.degrees(math.atan2(dx, dz))   # yaw 0 faces +z, as in thor/robot.py
+                    heading = math.degrees(math.atan2(dx, dz))   # yaw 0 faces +z, as in sim/robot.py
                     if abs((heading - yaw + 180) % 360 - 180) > half or not self._clear(x, z, ix * s, iz * s):
                         continue
                 self.explored.add(c)

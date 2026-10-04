@@ -1,0 +1,1709 @@
+{
+ "base_state": {
+  "at": "start",
+  "between": null,
+  "moving": false,
+  "xy": [
+   1.5,
+   1.5
+  ]
+ },
+ "keypoints": {
+  "bed_1a": [
+   3.5,
+   3.25,
+   98.4,
+   30.0
+  ],
+  "counter_1a": [
+   1.0,
+   0.5,
+   180.0,
+   30.0
+  ],
+  "counter_1b": [
+   2.0,
+   0.5,
+   180.0,
+   30.0
+  ],
+  "counter_1c": [
+   3.0,
+   0.5,
+   180.0,
+   30.0
+  ],
+  "counter_2": [
+   3.5,
+   2.0,
+   90.0,
+   30.0
+  ],
+  "dining_table_1": [
+   2.0,
+   3.5,
+   0.0,
+   30.0
+  ],
+  "shelf_1": [
+   0.5,
+   2.0,
+   270.0,
+   45.0
+  ],
+  "start": [
+   1.5,
+   1.5,
+   0.0,
+   30.0
+  ]
+ },
+ "landmarks": {
+  "coffee_machine_1": {
+   "label": "coffee machine",
+   "near": "counter_1c",
+   "type": "coffee_machine",
+   "visible": true,
+   "x": 2.9,
+   "y": 1.0,
+   "z": -0.1
+  },
+  "fridge_1": {
+   "label": "fridge",
+   "near": "shelf_1",
+   "type": "fridge",
+   "visible": true,
+   "x": 0.0,
+   "y": 0.9,
+   "z": 3.6
+  },
+  "microwave_1": {
+   "label": "microwave",
+   "near": "counter_2",
+   "type": "microwave",
+   "visible": false,
+   "x": 3.9,
+   "y": 1.2,
+   "z": 1.6
+  },
+  "stove_1": {
+   "label": "stove",
+   "near": "counter_1a",
+   "type": "stove",
+   "visible": false,
+   "x": 1.35,
+   "y": 0.95,
+   "z": -0.1
+  }
+ },
+ "layout": {
+  "alias": {
+   "Shelf|2": "shelf_1"
+  },
+  "grid": [
+   [
+    2,
+    2
+   ],
+   [
+    2,
+    3
+   ],
+   [
+    2,
+    4
+   ],
+   [
+    2,
+    5
+   ],
+   [
+    2,
+    6
+   ],
+   [
+    2,
+    7
+   ],
+   [
+    2,
+    8
+   ],
+   [
+    2,
+    9
+   ],
+   [
+    2,
+    10
+   ],
+   [
+    2,
+    11
+   ],
+   [
+    2,
+    12
+   ],
+   [
+    2,
+    13
+   ],
+   [
+    2,
+    14
+   ],
+   [
+    3,
+    2
+   ],
+   [
+    3,
+    3
+   ],
+   [
+    3,
+    4
+   ],
+   [
+    3,
+    5
+   ],
+   [
+    3,
+    6
+   ],
+   [
+    3,
+    7
+   ],
+   [
+    3,
+    8
+   ],
+   [
+    3,
+    9
+   ],
+   [
+    3,
+    10
+   ],
+   [
+    3,
+    11
+   ],
+   [
+    3,
+    12
+   ],
+   [
+    3,
+    13
+   ],
+   [
+    3,
+    14
+   ],
+   [
+    4,
+    2
+   ],
+   [
+    4,
+    3
+   ],
+   [
+    4,
+    4
+   ],
+   [
+    4,
+    5
+   ],
+   [
+    4,
+    6
+   ],
+   [
+    4,
+    7
+   ],
+   [
+    4,
+    8
+   ],
+   [
+    4,
+    9
+   ],
+   [
+    4,
+    10
+   ],
+   [
+    4,
+    11
+   ],
+   [
+    4,
+    12
+   ],
+   [
+    4,
+    13
+   ],
+   [
+    4,
+    14
+   ],
+   [
+    5,
+    2
+   ],
+   [
+    5,
+    3
+   ],
+   [
+    5,
+    4
+   ],
+   [
+    5,
+    5
+   ],
+   [
+    5,
+    6
+   ],
+   [
+    5,
+    7
+   ],
+   [
+    5,
+    8
+   ],
+   [
+    5,
+    9
+   ],
+   [
+    5,
+    10
+   ],
+   [
+    5,
+    11
+   ],
+   [
+    5,
+    12
+   ],
+   [
+    5,
+    13
+   ],
+   [
+    5,
+    14
+   ],
+   [
+    6,
+    2
+   ],
+   [
+    6,
+    3
+   ],
+   [
+    6,
+    4
+   ],
+   [
+    6,
+    5
+   ],
+   [
+    6,
+    6
+   ],
+   [
+    6,
+    7
+   ],
+   [
+    6,
+    8
+   ],
+   [
+    6,
+    9
+   ],
+   [
+    6,
+    10
+   ],
+   [
+    6,
+    11
+   ],
+   [
+    6,
+    12
+   ],
+   [
+    6,
+    13
+   ],
+   [
+    6,
+    14
+   ],
+   [
+    7,
+    2
+   ],
+   [
+    7,
+    3
+   ],
+   [
+    7,
+    4
+   ],
+   [
+    7,
+    5
+   ],
+   [
+    7,
+    6
+   ],
+   [
+    7,
+    10
+   ],
+   [
+    7,
+    11
+   ],
+   [
+    7,
+    12
+   ],
+   [
+    7,
+    13
+   ],
+   [
+    7,
+    14
+   ],
+   [
+    8,
+    2
+   ],
+   [
+    8,
+    3
+   ],
+   [
+    8,
+    4
+   ],
+   [
+    8,
+    5
+   ],
+   [
+    8,
+    6
+   ],
+   [
+    8,
+    10
+   ],
+   [
+    8,
+    11
+   ],
+   [
+    8,
+    12
+   ],
+   [
+    8,
+    13
+   ],
+   [
+    8,
+    14
+   ],
+   [
+    9,
+    2
+   ],
+   [
+    9,
+    3
+   ],
+   [
+    9,
+    4
+   ],
+   [
+    9,
+    5
+   ],
+   [
+    9,
+    6
+   ],
+   [
+    9,
+    10
+   ],
+   [
+    9,
+    11
+   ],
+   [
+    9,
+    12
+   ],
+   [
+    9,
+    13
+   ],
+   [
+    9,
+    14
+   ],
+   [
+    10,
+    2
+   ],
+   [
+    10,
+    3
+   ],
+   [
+    10,
+    4
+   ],
+   [
+    10,
+    5
+   ],
+   [
+    10,
+    6
+   ],
+   [
+    10,
+    7
+   ],
+   [
+    10,
+    8
+   ],
+   [
+    10,
+    9
+   ],
+   [
+    10,
+    10
+   ],
+   [
+    10,
+    11
+   ],
+   [
+    10,
+    12
+   ],
+   [
+    10,
+    13
+   ],
+   [
+    10,
+    14
+   ],
+   [
+    11,
+    2
+   ],
+   [
+    11,
+    3
+   ],
+   [
+    11,
+    4
+   ],
+   [
+    11,
+    5
+   ],
+   [
+    11,
+    6
+   ],
+   [
+    11,
+    7
+   ],
+   [
+    11,
+    8
+   ],
+   [
+    11,
+    9
+   ],
+   [
+    11,
+    10
+   ],
+   [
+    11,
+    11
+   ],
+   [
+    11,
+    12
+   ],
+   [
+    11,
+    13
+   ],
+   [
+    11,
+    14
+   ],
+   [
+    12,
+    2
+   ],
+   [
+    12,
+    3
+   ],
+   [
+    12,
+    4
+   ],
+   [
+    12,
+    5
+   ],
+   [
+    12,
+    6
+   ],
+   [
+    12,
+    7
+   ],
+   [
+    12,
+    8
+   ],
+   [
+    12,
+    9
+   ],
+   [
+    12,
+    10
+   ],
+   [
+    12,
+    11
+   ],
+   [
+    12,
+    12
+   ],
+   [
+    12,
+    13
+   ],
+   [
+    12,
+    14
+   ],
+   [
+    13,
+    2
+   ],
+   [
+    13,
+    3
+   ],
+   [
+    13,
+    4
+   ],
+   [
+    13,
+    5
+   ],
+   [
+    13,
+    6
+   ],
+   [
+    13,
+    7
+   ],
+   [
+    13,
+    8
+   ],
+   [
+    13,
+    9
+   ],
+   [
+    13,
+    10
+   ],
+   [
+    13,
+    11
+   ],
+   [
+    13,
+    12
+   ],
+   [
+    13,
+    13
+   ],
+   [
+    13,
+    14
+   ],
+   [
+    14,
+    2
+   ],
+   [
+    14,
+    3
+   ],
+   [
+    14,
+    4
+   ],
+   [
+    14,
+    5
+   ],
+   [
+    14,
+    6
+   ],
+   [
+    14,
+    7
+   ],
+   [
+    14,
+    8
+   ],
+   [
+    14,
+    9
+   ],
+   [
+    14,
+    10
+   ],
+   [
+    14,
+    11
+   ],
+   [
+    14,
+    12
+   ],
+   [
+    14,
+    13
+   ],
+   [
+    14,
+    14
+   ]
+  ],
+  "landmarks": {
+   "coffee_machine_1": {
+    "center": [
+     2.9,
+     1.0,
+     -0.1
+    ],
+    "label": "coffee machine",
+    "name": "coffee_machine_1",
+    "near": "counter_1c",
+    "thor_ids": [
+     "CoffeeMachine|1"
+    ]
+   },
+   "fridge_1": {
+    "center": [
+     0.0,
+     0.9,
+     3.6
+    ],
+    "label": "fridge",
+    "name": "fridge_1",
+    "near": "shelf_1",
+    "thor_ids": [
+     "Fridge|1"
+    ]
+   },
+   "microwave_1": {
+    "center": [
+     3.9,
+     1.2,
+     1.6
+    ],
+    "label": "microwave",
+    "name": "microwave_1",
+    "near": "counter_2",
+    "thor_ids": [
+     "Microwave|1"
+    ]
+   },
+   "stove_1": {
+    "center": [
+     1.35,
+     0.95,
+     -0.1
+    ],
+    "label": "stove",
+    "name": "stove_1",
+    "near": "counter_1a",
+    "thor_ids": [
+     "StoveBurner|1",
+     "StoveBurner|2"
+    ]
+   }
+  },
+  "obj_ids": {
+   "apple_1": "Apple|1",
+   "apple_2": "Apple|2",
+   "book_1": "Book|1",
+   "bowl_1": "Bowl|1",
+   "egg_1": "Egg|1",
+   "fork_1": "Fork|1",
+   "key_chain_1": "KeyChain|1",
+   "mug_1": "Mug|1",
+   "mug_2": "Mug|2",
+   "pen_1": "Pen|1",
+   "potato_1": "Potato|1"
+  },
+  "rooms": {},
+  "scene": "FloorPlan1",
+  "skipped": [
+   [
+    "Bed|1",
+    "nearest spot 2.7 m away"
+   ],
+   [
+    "Sofa|1",
+    "nearest spot 7.6 m away"
+   ],
+   [
+    "Sofa|1",
+    "nearest spot 8.3 m away"
+   ]
+  ],
+  "start": [
+   1.5,
+   1.5,
+   0.0,
+   30.0
+  ],
+  "surfaces": {
+   "bed_1a": {
+    "center": [
+     5.2,
+     3.0
+    ],
+    "desc": "bed 1, part a",
+    "half": [
+     0.5,
+     0.8
+    ],
+    "height": 0.75,
+    "horizon": 30.0,
+    "name": "bed_1a",
+    "stand": [
+     3.5,
+     3.25
+    ],
+    "thor_id": "Bed|1",
+    "yaw": 98.4
+   },
+   "counter_1a": {
+    "center": [
+     1.0,
+     0.0
+    ],
+    "desc": "counter 1, part a",
+    "half": [
+     0.5,
+     0.3
+    ],
+    "height": 0.95,
+    "horizon": 30.0,
+    "name": "counter_1a",
+    "stand": [
+     1.0,
+     0.5
+    ],
+    "thor_id": "CounterTop|1",
+    "yaw": 180.0
+   },
+   "counter_1b": {
+    "center": [
+     2.0,
+     0.0
+    ],
+    "desc": "counter 1, part b",
+    "half": [
+     0.5,
+     0.3
+    ],
+    "height": 0.95,
+    "horizon": 30.0,
+    "name": "counter_1b",
+    "stand": [
+     2.0,
+     0.5
+    ],
+    "thor_id": "CounterTop|1",
+    "yaw": 180.0
+   },
+   "counter_1c": {
+    "center": [
+     3.0,
+     0.0
+    ],
+    "desc": "counter 1, part c",
+    "half": [
+     0.5,
+     0.3
+    ],
+    "height": 0.95,
+    "horizon": 30.0,
+    "name": "counter_1c",
+    "stand": [
+     3.0,
+     0.5
+    ],
+    "thor_id": "CounterTop|1",
+    "yaw": 180.0
+   },
+   "counter_2": {
+    "center": [
+     4.0,
+     2.0
+    ],
+    "desc": "counter 2",
+    "half": [
+     0.3,
+     0.6
+    ],
+    "height": 0.95,
+    "horizon": 30.0,
+    "name": "counter_2",
+    "stand": [
+     3.5,
+     2.0
+    ],
+    "thor_id": "CounterTop|2",
+    "yaw": 90.0
+   },
+   "dining_table_1": {
+    "center": [
+     2.0,
+     4.2
+    ],
+    "desc": "dining table 1",
+    "half": [
+     0.6,
+     0.4
+    ],
+    "height": 0.78,
+    "horizon": 30.0,
+    "name": "dining_table_1",
+    "stand": [
+     2.0,
+     3.5
+    ],
+    "thor_id": "DiningTable|1",
+    "yaw": 0.0
+   },
+   "shelf_1": {
+    "center": [
+     0.0,
+     2.0
+    ],
+    "desc": "shelf 1",
+    "half": [
+     0.2,
+     0.4
+    ],
+    "height": 0.53,
+    "horizon": 45.0,
+    "name": "shelf_1",
+    "stand": [
+     0.5,
+     2.0
+    ],
+    "thor_id": "Shelf|1",
+    "yaw": 270.0
+   }
+  },
+  "thor_ids": {
+   "Apple|1": "apple_1",
+   "Apple|2": "apple_2",
+   "Book|1": "book_1",
+   "Bowl|1": "bowl_1",
+   "Egg|1": "egg_1",
+   "Fork|1": "fork_1",
+   "KeyChain|1": "key_chain_1",
+   "Mug|1": "mug_1",
+   "Mug|2": "mug_2",
+   "Pen|1": "pen_1",
+   "Potato|1": "potato_1"
+  },
+  "topdown": {
+   "cx": 2.0,
+   "cz": 2.0,
+   "h": 240,
+   "size": 3.0,
+   "w": 320
+  },
+  "user_surface": "counter_1a",
+  "y": 0.9
+ },
+ "map": {
+  "edges": [
+   [
+    "start",
+    "bed_1a",
+    3.75
+   ],
+   [
+    "start",
+    "counter_1a",
+    1.5
+   ],
+   [
+    "start",
+    "counter_1b",
+    1.5
+   ],
+   [
+    "start",
+    "counter_1c",
+    2.5
+   ],
+   [
+    "start",
+    "counter_2",
+    2.5
+   ],
+   [
+    "start",
+    "dining_table_1",
+    2.5
+   ],
+   [
+    "start",
+    "shelf_1",
+    1.5
+   ],
+   [
+    "bed_1a",
+    "counter_1a",
+    5.25
+   ],
+   [
+    "bed_1a",
+    "counter_1b",
+    4.25
+   ],
+   [
+    "bed_1a",
+    "counter_1c",
+    3.25
+   ],
+   [
+    "bed_1a",
+    "counter_2",
+    1.25
+   ],
+   [
+    "bed_1a",
+    "dining_table_1",
+    1.75
+   ],
+   [
+    "bed_1a",
+    "shelf_1",
+    4.25
+   ],
+   [
+    "counter_1a",
+    "counter_1b",
+    1.0
+   ],
+   [
+    "counter_1a",
+    "counter_1c",
+    2.0
+   ],
+   [
+    "counter_1a",
+    "counter_2",
+    4.0
+   ],
+   [
+    "counter_1a",
+    "dining_table_1",
+    4.0
+   ],
+   [
+    "counter_1a",
+    "shelf_1",
+    2.0
+   ],
+   [
+    "counter_1b",
+    "counter_1c",
+    1.0
+   ],
+   [
+    "counter_1b",
+    "counter_2",
+    3.0
+   ],
+   [
+    "counter_1b",
+    "dining_table_1",
+    4.0
+   ],
+   [
+    "counter_1b",
+    "shelf_1",
+    3.0
+   ],
+   [
+    "counter_1c",
+    "counter_2",
+    2.0
+   ],
+   [
+    "counter_1c",
+    "dining_table_1",
+    4.0
+   ],
+   [
+    "counter_1c",
+    "shelf_1",
+    4.0
+   ],
+   [
+    "counter_2",
+    "dining_table_1",
+    3.0
+   ],
+   [
+    "counter_2",
+    "shelf_1",
+    4.0
+   ],
+   [
+    "dining_table_1",
+    "shelf_1",
+    3.0
+   ]
+  ],
+  "keypoints": {
+   "bed_1a": {
+    "desc": "in front of the bed 1, part a",
+    "xy": [
+     3.5,
+     3.25
+    ]
+   },
+   "counter_1a": {
+    "desc": "in front of the counter 1, part a",
+    "xy": [
+     1.0,
+     0.5
+    ]
+   },
+   "counter_1b": {
+    "desc": "in front of the counter 1, part b",
+    "xy": [
+     2.0,
+     0.5
+    ]
+   },
+   "counter_1c": {
+    "desc": "in front of the counter 1, part c",
+    "xy": [
+     3.0,
+     0.5
+    ]
+   },
+   "counter_2": {
+    "desc": "in front of the counter 2",
+    "xy": [
+     3.5,
+     2.0
+    ]
+   },
+   "dining_table_1": {
+    "desc": "in front of the dining table 1",
+    "xy": [
+     2.0,
+     3.5
+    ]
+   },
+   "shelf_1": {
+    "desc": "in front of the shelf 1",
+    "xy": [
+     0.5,
+     2.0
+    ]
+   },
+   "start": {
+    "desc": "where the robot started, next to you",
+    "xy": [
+     1.5,
+     1.5
+    ]
+   }
+  },
+  "max_reach_height_m": 1.5,
+  "nav_speed_mps": 0.6,
+  "people": {
+   "user": {
+    "deliver_to_surface": "counter_1a",
+    "keypoint": "counter_1a"
+   }
+  },
+  "rooms": {},
+  "scene": "FloorPlan1",
+  "surfaces": {
+   "bed_1a": {
+    "desc": "the bed 1, part a",
+    "height_m": 0.75,
+    "keypoints": [
+     "bed_1a"
+    ],
+    "xy": [
+     5.2,
+     3.0
+    ]
+   },
+   "counter_1a": {
+    "desc": "the counter 1, part a",
+    "height_m": 0.95,
+    "keypoints": [
+     "counter_1a"
+    ],
+    "xy": [
+     1.0,
+     0.0
+    ]
+   },
+   "counter_1b": {
+    "desc": "the counter 1, part b",
+    "height_m": 0.95,
+    "keypoints": [
+     "counter_1b"
+    ],
+    "xy": [
+     2.0,
+     0.0
+    ]
+   },
+   "counter_1c": {
+    "desc": "the counter 1, part c",
+    "height_m": 0.95,
+    "keypoints": [
+     "counter_1c"
+    ],
+    "xy": [
+     3.0,
+     0.0
+    ]
+   },
+   "counter_2": {
+    "desc": "the counter 2",
+    "height_m": 0.95,
+    "keypoints": [
+     "counter_2"
+    ],
+    "xy": [
+     4.0,
+     2.0
+    ]
+   },
+   "dining_table_1": {
+    "desc": "the dining table 1",
+    "height_m": 0.78,
+    "keypoints": [
+     "dining_table_1"
+    ],
+    "xy": [
+     2.0,
+     4.2
+    ]
+   },
+   "shelf_1": {
+    "desc": "the shelf 1",
+    "height_m": 0.53,
+    "keypoints": [
+     "shelf_1"
+    ],
+    "xy": [
+     0.0,
+     2.0
+    ]
+   }
+  }
+ },
+ "objects": {
+  "apple_1": {
+   "label": "apple",
+   "type": "apple",
+   "visible": true,
+   "where": "counter_1c",
+   "x": 2.9,
+   "y": 1.0,
+   "z": 0.1
+  },
+  "apple_2": {
+   "label": "apple",
+   "type": "apple",
+   "visible": false,
+   "where": "counter_1a",
+   "x": 1.0,
+   "y": 1.0,
+   "z": 0.05
+  },
+  "book_1": {
+   "label": "book",
+   "type": "book",
+   "visible": false,
+   "where": "shelf_1",
+   "x": 0.0,
+   "y": 1.05,
+   "z": 2.1
+  },
+  "bowl_1": {
+   "label": "bowl",
+   "type": "bowl",
+   "visible": true,
+   "where": "counter_2",
+   "x": 4.0,
+   "y": 1.0,
+   "z": 2.2
+  },
+  "egg_1": {
+   "label": "egg",
+   "type": "egg",
+   "visible": false,
+   "where": "fridge",
+   "x": 0.0,
+   "y": 0.9,
+   "z": 3.6
+  },
+  "fork_1": {
+   "label": "fork",
+   "type": "fork",
+   "visible": false,
+   "where": "counter_2",
+   "x": 4.0,
+   "y": 1.02,
+   "z": 2.2
+  },
+  "key_chain_1": {
+   "label": "key chain",
+   "type": "key_chain",
+   "visible": false,
+   "where": "unknown",
+   "x": 3.0,
+   "y": 0.8,
+   "z": 3.0
+  },
+  "mug_1": {
+   "label": "mug",
+   "type": "mug",
+   "visible": true,
+   "where": "dining_table_1",
+   "x": 2.1,
+   "y": 0.8,
+   "z": 4.1
+  },
+  "mug_2": {
+   "label": "mug",
+   "type": "mug",
+   "visible": true,
+   "where": "hand",
+   "x": 2.0,
+   "y": 1.1,
+   "z": 2.0
+  },
+  "pen_1": {
+   "label": "pen",
+   "type": "pen",
+   "visible": false,
+   "where": "floor",
+   "x": 2.5,
+   "y": 0.05,
+   "z": 2.5
+  },
+  "potato_1": {
+   "label": "potato",
+   "type": "potato",
+   "visible": false,
+   "where": "counter_1b",
+   "x": 2.0,
+   "y": 1.0,
+   "z": 0.0
+  }
+ },
+ "path_length": 6.0,
+ "paths": {
+  "(0.1, 0.1)->(3.0, 0.5)": [
+   [
+    0.5,
+    0.5
+   ],
+   [
+    0.75,
+    0.5
+   ],
+   [
+    1.0,
+    0.5
+   ],
+   [
+    1.25,
+    0.5
+   ],
+   [
+    1.5,
+    0.5
+   ],
+   [
+    1.75,
+    0.5
+   ],
+   [
+    2.0,
+    0.5
+   ],
+   [
+    2.25,
+    0.5
+   ],
+   [
+    2.5,
+    0.5
+   ],
+   [
+    2.75,
+    0.5
+   ],
+   [
+    3.0,
+    0.5
+   ]
+  ],
+  "(0.5, 0.5)->(3.5, 3.5)": [
+   [
+    0.5,
+    0.5
+   ],
+   [
+    0.75,
+    0.5
+   ],
+   [
+    1.0,
+    0.5
+   ],
+   [
+    1.25,
+    0.5
+   ],
+   [
+    1.5,
+    0.5
+   ],
+   [
+    1.75,
+    0.5
+   ],
+   [
+    2.0,
+    0.5
+   ],
+   [
+    2.25,
+    0.5
+   ],
+   [
+    2.5,
+    0.5
+   ],
+   [
+    2.75,
+    0.5
+   ],
+   [
+    3.0,
+    0.5
+   ],
+   [
+    3.25,
+    0.5
+   ],
+   [
+    3.5,
+    0.5
+   ],
+   [
+    3.5,
+    0.75
+   ],
+   [
+    3.5,
+    1.0
+   ],
+   [
+    3.5,
+    1.25
+   ],
+   [
+    3.5,
+    1.5
+   ],
+   [
+    3.5,
+    1.75
+   ],
+   [
+    3.5,
+    2.0
+   ],
+   [
+    3.5,
+    2.25
+   ],
+   [
+    3.5,
+    2.5
+   ],
+   [
+    3.5,
+    2.75
+   ],
+   [
+    3.5,
+    3.0
+   ],
+   [
+    3.5,
+    3.25
+   ],
+   [
+    3.5,
+    3.5
+   ]
+  ],
+  "(1.0, 1.0)->(9.0, 9.0)": null,
+  "(1.5, 1.5)->(2.0, 2.0)": null
+ },
+ "perception": {
+  "landmarks": {
+   "coffee_machine_1": {
+    "confidence": 1.0,
+    "distance_m": 2.126,
+    "label": "coffee machine",
+    "near": "counter_1c",
+    "pose": {
+     "x": 2.9,
+     "y": 1.0,
+     "z": -0.1
+    },
+    "source": "thor-ground-truth",
+    "type": "coffee_machine",
+    "visible": true
+   },
+   "fridge_1": {
+    "confidence": 1.0,
+    "distance_m": 2.581,
+    "label": "fridge",
+    "near": "shelf_1",
+    "pose": {
+     "x": 0.0,
+     "y": 0.9,
+     "z": 3.6
+    },
+    "source": "thor-ground-truth",
+    "type": "fridge",
+    "visible": true
+   }
+  },
+  "objects": {
+   "apple_1": {
+    "confidence": 1.0,
+    "distance_m": 1.98,
+    "label": "apple",
+    "pose": {
+     "x": 2.9,
+     "y": 1.0,
+     "z": 0.1
+    },
+    "source": "thor-ground-truth",
+    "type": "apple",
+    "visible": true,
+    "where": "counter_1c"
+   },
+   "bowl_1": {
+    "confidence": 1.0,
+    "distance_m": 2.596,
+    "label": "bowl",
+    "pose": {
+     "x": 4.0,
+     "y": 1.0,
+     "z": 2.2
+    },
+    "source": "thor-ground-truth",
+    "type": "bowl",
+    "visible": true,
+    "where": "counter_2"
+   },
+   "mug_1": {
+    "confidence": 1.0,
+    "distance_m": 2.668,
+    "label": "mug",
+    "pose": {
+     "x": 2.1,
+     "y": 0.8,
+     "z": 4.1
+    },
+    "source": "thor-ground-truth",
+    "type": "mug",
+    "visible": true,
+    "where": "dining_table_1"
+   },
+   "mug_2": {
+    "confidence": 1.0,
+    "distance_m": 0.707,
+    "label": "mug",
+    "pose": {
+     "x": 2.0,
+     "y": 1.1,
+     "z": 2.0
+    },
+    "source": "thor-ground-truth",
+    "type": "mug",
+    "visible": true,
+    "where": "hand"
+   }
+  },
+  "people": {
+   "user": {
+    "confidence": 1.0,
+    "deliver_to_surface": "counter_1a",
+    "distance_m": 1.118,
+    "keypoint": "counter_1a",
+    "pose": {
+     "x": 1.0,
+     "z": 0.5
+    },
+    "source": "thor-ground-truth"
+   }
+  },
+  "source": "thor-ground-truth"
+ },
+ "telemetry": {
+  "active_skills": [],
+  "arms": {
+   "left": {
+    "gripper": "open",
+    "joints": [
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "posture": "home"
+   },
+   "right": {
+    "gripper": "open",
+    "joints": [
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ],
+    "posture": "home"
+   }
+  },
+  "grippers": {
+   "left": {
+    "closed": false,
+    "force": 0.0,
+    "width": 0.085
+   },
+   "right": {
+    "closed": false,
+    "force": 0.0,
+    "width": 0.085
+   }
+  },
+  "health": {
+   "ok": true,
+   "source": "thor"
+  },
+  "moving": false,
+  "pose": {
+   "at": "start",
+   "between": null,
+   "horizon": 30.0,
+   "x": 1.5,
+   "yaw": 0.0,
+   "z": 1.5
+  },
+  "velocity": {
+   "angular_dps": 0.0,
+   "linear_mps": 0.0
+  }
+ }
+}

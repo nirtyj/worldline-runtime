@@ -4,7 +4,7 @@ Every skill returns an Outcome(status, data). Statuses: SUCCEEDED, ABORTED,
 CANCELED, TIMEOUT, REJECTED.
 
 Pick and place are plain goals: the robot runs the grasp chunk by chunk and
-honours cancel only between chunks (see thor/robot.py).
+honours cancel only between chunks (see sim/robot.py).
 """
 
 from __future__ import annotations

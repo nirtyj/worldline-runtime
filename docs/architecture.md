@@ -393,7 +393,7 @@ With no `SYSTEM1` set, the planner labels every message, as before.
 
 ## Testing
 
-`eval/suite.py` drives the running server through ten scripted conversations and
+`eval/suite.py` drives the running server through 17 scripted conversations and
 checks the simulator's truth afterwards: a fetch from another room, a correction, stop
 and resume, remembering where something was put, recalling earlier requests, an object
 that isn't in the house, a search with memory wiped, a question mid-task, a note, and
@@ -401,13 +401,15 @@ something it can't do. Every run also lands in the episode log, so testing feeds
 procedural graph.
 
 ```bash
-.venv-thor/bin/python eval/suite.py                       # all ten, against a running server
+.venv-thor/bin/python eval/suite.py                       # all 17, against a running server
 .venv-thor/bin/python eval/suite.py --only correction,stop_resume
 .venv-thor/bin/python eval/evolve.py                      # propose rules, keep them if the suite agrees
 ```
 
 ## The simulator
 
+The server's world is AI2-THOR unless `--world module:factory` names another; the
+contract is `sim/world.py`, and the robot (`sim/robot.py`) drives any world that meets it.
 One server runs one simulator. Stopping the server (Ctrl-C, `kill`, closing the
 terminal) stops and reaps it; a simulator left behind by a crash is stopped when the
 next server starts; a second server on the same port refuses to start. A simulator
@@ -428,7 +430,8 @@ that never connects, is retried once on a new one.
 | System 1's observations stay unverified hints | a vision model sometimes sees what isn't there | the planner may look to confirm something that was right |
 | Recall on demand instead of all memory in the prompt | about 4,200 tokens a decision instead of growing with the house | one extra call when it needs memory |
 
-Where it's thin: perception is a stand-in that reads the simulator's object list;
+Where it's thin: perception is a stand-in that reads the simulator's object list
+(`perception/source.py`; another source plugs in with `--perception`);
 appliances are only landmarks, not things it can open; the speech timer is an estimate
 with no audio behind it; the procedural graph has few failures to learn from.
 
@@ -446,7 +449,9 @@ with no audio behind it; the procedural graph has few failures to learn from.
 | runtime/planner contract, tools, kinds, the System 1 contract | `brains/interface.py`, `brains/composite.py` |
 | System 1 feed and routing | `ui/server.py` (`_route`, `_system1_feed`), stand-in `tests/system1_stub.py` |
 | model clients (Gemini, Anthropic, OpenAI-compatible) | `llmkit/` |
-| robot: sensors, nav stack, arms, say | `thor/robot.py` |
-| the house and the simulator | `thor/world.py`, `thor/procthor.py` |
+| robot: sensors, nav stack, arms, say | `sim/robot.py` |
+| what the robot sees (the stand-in detector) | `perception/source.py` |
+| the world seam; a home turned into names | `sim/world.py`, `sim/layout.py` |
+| the house and the simulator (AI2-THOR) | `thor/world.py`, `thor/procthor.py` |
 | server, page, the robot's map | `ui/server.py`, `ui/index.html`, `ui/views/`, `ui/robot_map.py` |
 | scenario suite, rule evolution | `eval/suite.py`, `eval/evolve.py` |

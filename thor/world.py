@@ -1,42 +1,32 @@
-"""AI2-THOR as the robot's world: an iTHOR room or a multi-room ProcTHOR house
-(thor/procthor.py), its layout turned into the names the runtime uses
-(rooms, keypoints, surfaces, short object ids), and frames from the robot's
-head camera and an overhead camera.
+"""AI2-THOR as the robot's world (the World seam in sim/world.py): an iTHOR room or a
+multi-room ProcTHOR house (thor/procthor.py), its layout turned into the names the
+runtime uses by sim/layout.py (rooms, keypoints, surfaces, short object ids), and frames
+from the robot's head camera and an overhead camera.
 
 Every controller call blocks and THOR is not thread-safe, so all of them run
 on one worker thread; ``await world.call(fn, ...)`` hops onto it.
-
-Naming, so a model can read it:
-  surfaces   one per reachable stretch of furniture: "counter_2b" is the second
-             half of the second counter top. Each surface has one keypoint of
-             the same name, where the robot stands facing it. In a house the
-             room comes first: "kitchen_counter_1a", "bedroom_bed_1". Shelf
-             levels stacked in one unit share a single surface.
-  keypoints  the surface spots, plus "start" (where the robot begins).
-  objects    pickupable things, "apple_1", "butter_knife_1".
-  landmarks  fixed things worth naming, "microwave_1", "stove_1" (all burners
-             as one), "fridge_1". They can't be picked up; they're how a person
-             describes places ("next to the toaster").
 """
 
 from __future__ import annotations
 
 import asyncio
-import collections
 import concurrent.futures
 import io
 import math
 import os
-import re
 import signal
 import subprocess
 import threading
 import time
 import weakref
-from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from PIL import Image
+
+from sim.layout import (GRID, LANDMARK_SEEN_M, MAX_REACH_HEIGHT, NAV_SPEED, REACH_M, Landmark,  # noqa: F401
+                        Layout, Placed, Surface, Thing, grid_path, layout_surfaces, name_landmarks,
+                        name_objects, place_points, snake, where_of, words)
+from sim.layout import path_length as grid_path_length
 
 from . import procthor
 
@@ -73,15 +63,7 @@ LANDMARK_TYPES = {                      # THOR type -> what people call it
 }
 GROUPED_LANDMARKS = {"StoveBurner"}     # several THOR objects, one name
 MIN_PIXELS = 40          # a box this big in the head camera counts as seen
-LANDMARK_SEEN_M = 3.0    # appliances are big: recognisable from further away
 HELD_CONTAINERS = {"Bowl", "Plate", "Mug", "Cup", "Pan", "Pot"}   # an apple in a bowl is "on" the bowl's surface
-GRID = 0.25
-SEGMENT_M = 1.3          # a surface longer than this gets one keypoint per stretch
-MAX_STAND_OFF = 1.6      # a spot farther than this from its stretch is useless
-EDGE_STAND_OFF = 1.25    # ...unless it is this close to the furniture's edge (beds, big tables)
-REACH_M = 1.5            # the arm reaches this far from the robot's centre
-MAX_REACH_HEIGHT = 1.5
-NAV_SPEED = 0.6          # m/s, as in the old sim
 
 SCENES = (
     procthor.HOUSES +
@@ -92,84 +74,32 @@ SCENES = (
 )
 
 
-def _place_points(half: tuple[float, float]) -> list[tuple[float, float]]:
-    """Centre of a stretch first, then rings of points inside it."""
-    hx, hz = max(half[0] - 0.08, 0.0), max(half[1] - 0.08, 0.0)
-    pts = [(0.0, 0.0)]
-    for r in (0.15, 0.3, 0.45):
-        for fx, fz in ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, 1), (1, -1), (-1, -1)):
-            dx, dz = max(-hx, min(hx, fx * r)), max(-hz, min(hz, fz * r))
-            if (dx, dz) not in pts:
-                pts.append((dx, dz))
-    return pts
+def _things(objs: list[dict[str, Any]]) -> list[Thing]:
+    """THOR's object metadata as the plain records sim/layout.py names."""
+    out = []
+    for o in objs:
+        box, t = o["axisAlignedBoundingBox"], o["objectType"]
+        out.append(Thing(
+            id=o["objectId"], type=snake(t),
+            center=(box["center"]["x"], box["center"]["y"], box["center"]["z"]),
+            size=(box["size"]["x"], box["size"]["y"], box["size"]["z"]),
+            position=(o["position"]["x"], o["position"]["y"], o["position"]["z"]),
+            pickupable=bool(o["pickupable"]), surface=SURFACE_TYPES.get(t),
+            landmark=LANDMARK_TYPES.get(t), grouped=t in GROUPED_LANDMARKS))
+    return out
 
 
-def _edge_dist(p: tuple[float, float], centre: tuple[float, float], half: tuple[float, float]) -> float:
-    """Distance from a floor point to a furniture footprint (an axis-aligned rectangle)."""
-    dx = max(abs(p[0] - centre[0]) - half[0], 0.0)
-    dz = max(abs(p[1] - centre[1]) - half[1], 0.0)
-    return math.hypot(dx, dz)
-
-
-def by_type(objs: list[dict[str, Any]], thor_id: str) -> str | None:
-    return next((o["objectType"] for o in objs if o["objectId"] == thor_id), None)
-
-
-def snake(name: str) -> str:
-    """CreditCard -> credit_card, TVStand -> tv_stand."""
-    return re.sub(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])", "_", name).lower()
-
-
-def words(name: str) -> str:
-    return snake(name).replace("_", " ")
-
-
-@dataclass
-class Surface:
-    name: str
-    thor_id: str                # the receptacle this stretch belongs to
-    desc: str
-    center: tuple[float, float]  # x, z of the stretch
-    height: float
-    stand: tuple[float, float]  # x, z of its keypoint
-    yaw: float                  # facing the stretch
-    horizon: float              # camera tilt when standing there
-    half: tuple[float, float] = (0.3, 0.3)   # half-size of the stretch in x and z
-
-
-@dataclass
-class Landmark:
-    name: str
-    label: str
-    thor_ids: list[str]         # a stove is several burners
-    center: tuple[float, float, float]   # x, y, z
-    near: str                   # the keypoint to stand at to use it
-
-
-@dataclass
-class Layout:
-    scene: str
-    surfaces: dict[str, Surface] = field(default_factory=dict)
-    start: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)   # x, z, yaw, horizon
-    grid: set[tuple[int, int]] = field(default_factory=set)
-    y: float = 0.9               # the agent's height; teleports need it
-    obj_ids: dict[str, str] = field(default_factory=dict)      # short -> THOR id
-    thor_ids: dict[str, str] = field(default_factory=dict)     # THOR id -> short
-    landmarks: dict[str, "Landmark"] = field(default_factory=dict)
-    rooms: dict[str, dict[str, Any]] = field(default_factory=dict)   # ProcTHOR houses only
-    alias: dict[str, str] = field(default_factory=dict)      # THOR id of a stacked shelf -> its surface
-    skipped: list[tuple[str, str]] = field(default_factory=list)   # surfaces with no spot, and why
-    user_surface: str | None = None
-    topdown: dict[str, Any] = field(default_factory=dict)      # the overhead camera, for the page
-
-    def keypoints(self) -> dict[str, tuple[float, float, float, float]]:
-        kps = {"start": self.start}
-        for s in self.surfaces.values():
-            kps[s.name] = (s.stand[0], s.stand[1], s.yaw, s.horizon)
-        return kps
+def _placed(o: dict[str, Any]) -> Placed:
+    """Where one THOR object is, as sim/layout.py's where_of reads it."""
+    return Placed(type=snake(o["objectType"]),
+                  position=(o["position"]["x"], o["position"]["y"], o["position"]["z"]),
+                  held=bool(o.get("isPickedUp")), parents=tuple(o.get("parentReceptacles") or ()),
+                  is_surface=o["objectType"] in SURFACE_TYPES, carries=o["objectType"] in HELD_CONTAINERS)
 
 
 class ThorWorld:
+    source = "thor"                     # stamped on what the robot reports
+
     def __init__(self, width: int = 640, height: int = 480) -> None:
         self.width, self.height = width, height
         self._pool = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="thor")
@@ -180,6 +110,10 @@ class ThorWorld:
         self.frame_rev = 0
         self.held: str | None = None      # THOR id of the object in the hand
         self.on_slow: Callable[[str, float, float], None] | None = None   # (call, queued_s, ran_s)
+
+    def scenes(self) -> list[tuple[str, str]]:
+        """The rooms and houses on offer: (name, label) for the page's room menu."""
+        return list(SCENES)
 
     # ------------------------------------------------------------------
     async def call(self, fn: Callable[..., Any], *args: Any, **kw: Any) -> Any:
@@ -337,9 +271,10 @@ class ThorWorld:
                        "size": props["orthographicSize"], "w": self.width, "h": self.height}
         if house is not None:
             lay.rooms = procthor.rooms(house)
-        self._layout_surfaces(lay, self.event.metadata["objects"])
-        self._name_objects(lay, self.event.metadata["objects"])
-        self._name_landmarks(lay, self.event.metadata["objects"])
+        things = _things(self.event.metadata["objects"])
+        layout_surfaces(lay, things)
+        name_objects(lay, things)
+        name_landmarks(lay, things)
         if lay.surfaces:
             lay.user_surface = min(lay.surfaces.values(),
                                    key=lambda s: math.dist(s.stand, (sx, sz))).name
@@ -347,102 +282,6 @@ class ThorWorld:
         self.held = None
         self.teleport(*lay.start)
         return lay
-
-    def _layout_surfaces(self, lay: Layout, objs: list[dict[str, Any]]) -> None:
-        counts: dict[tuple[str | None, str], int] = collections.Counter()
-        used: list[tuple[float, float]] = []
-        stands = [(gx * GRID, gz * GRID) for gx, gz in lay.grid]
-        # in a house, stand in the same room as the furniture, never behind a wall
-        stand_room = {p: procthor.room_at(lay.rooms, *p) for p in stands} if lay.rooms else {}
-        lay.skipped = []
-        # Shelf levels stacked in one unit: keep the lowest as the surface, fold the rest into it.
-        surf = [o for o in objs if o["objectType"] in SURFACE_TYPES]
-        centre = {o["objectId"]: (o["axisAlignedBoundingBox"]["center"]["x"], o["axisAlignedBoundingBox"]["center"]["z"])
-                  for o in surf}
-        primary: dict[str, str] = {}
-        for o in sorted(surf, key=lambda o: o["axisAlignedBoundingBox"]["center"]["y"]):
-            below = next((q for q in primary.values() if by_type(objs, q) == o["objectType"]
-                          and math.dist(centre[q], centre[o["objectId"]]) < 0.35), None)
-            primary[o["objectId"]] = below or o["objectId"]
-        for o in sorted(objs, key=lambda o: o["objectId"]):
-            kind = SURFACE_TYPES.get(o["objectType"])
-            if kind is None or primary[o["objectId"]] != o["objectId"]:
-                continue
-            box = o["axisAlignedBoundingBox"]
-            cx, cz = box["center"]["x"], box["center"]["z"]
-            ex, ez = box["size"]["x"], box["size"]["z"]
-            height = box["center"]["y"] + box["size"]["y"] / 2
-            n = max(1, math.ceil(max(ex, ez) / SEGMENT_M))
-            along_x = ex >= ez
-            room = procthor.room_at(lay.rooms, cx, cz) if lay.rooms else None
-            counts[(room, kind)] += 1
-            num = counts[(room, kind)]
-            base = f"{snake(o['objectType']) if kind != 'counter' else 'counter'}_{num}"
-            if room:
-                base = f"{room}_{base}"
-            for i in range(n):
-                f = (i + 0.5) / n - 0.5
-                seg = (cx + f * ex, cz) if along_x else (cx, cz + f * ez)
-                free = [p for p in stands if all(math.dist(p, u) > 0.3 for u in used)
-                        and (not room or stand_room.get(p) == room)]
-                if not free:
-                    lay.skipped.append((o["objectId"], "no free spot in the room"))
-                    continue
-                best = min(free, key=lambda p: math.dist(p, seg))
-                if math.dist(best, seg) > MAX_STAND_OFF:
-                    # big furniture: its centre is far from everywhere; stand by its nearest edge
-                    half = (ex / n / 2, ez / 2) if along_x else (ex / 2, ez / n / 2)
-                    best = min(free, key=lambda p: _edge_dist(p, seg, half))
-                    if _edge_dist(best, seg, half) > EDGE_STAND_OFF:
-                        lay.skipped.append((o["objectId"], f"nearest spot {math.dist(best, seg):.1f} m away"))
-                        continue
-                used.append(best)
-                name = base + ("" if n == 1 else "abcdefgh"[i])
-                yaw = math.degrees(math.atan2(seg[0] - best[0], seg[1] - best[1])) % 360
-                horizon = 45.0 if height < 0.6 else 30.0 if height < 1.1 else 10.0
-                part = "" if n == 1 else f", part {'abcdefgh'[i]}"
-                where = f" in the {lay.rooms[room]['label']}" if room else ""
-                lay.surfaces[name] = Surface(name, o["objectId"], f"{kind} {num}{part}{where}", seg,
-                                             round(height, 2), best, round(yaw, 1), horizon,
-                                             (ex / n / 2, ez / 2) if along_x else (ex / 2, ez / n / 2))
-
-        for tid, first in primary.items():
-            if tid != first:
-                home = next((x.name for x in lay.surfaces.values() if x.thor_id == first), None)
-                if home:
-                    lay.alias[tid] = home
-
-    def _name_objects(self, lay: Layout, objs: list[dict[str, Any]]) -> None:
-        counts: dict[str, int] = collections.Counter()
-        for o in sorted(objs, key=lambda o: o["objectId"]):
-            if not o["pickupable"]:
-                continue
-            t = snake(o["objectType"])
-            counts[t] += 1
-            short = f"{t}_{counts[t]}"
-            lay.obj_ids[short] = o["objectId"]
-            lay.thor_ids[o["objectId"]] = short
-
-    def _name_landmarks(self, lay: Layout, objs: list[dict[str, Any]]) -> None:
-        groups: dict[str, list[list[dict[str, Any]]]] = collections.defaultdict(list)
-        for o in sorted(objs, key=lambda o: o["objectId"]):
-            t = o["objectType"]
-            if t not in LANDMARK_TYPES or o["pickupable"]:
-                continue
-            if t in GROUPED_LANDMARKS and groups[t]:
-                groups[t][0].append(o)
-            else:
-                groups[t].append([o])
-        kps = lay.keypoints()
-        for t, members in groups.items():
-            for i, group in enumerate(members, 1):
-                x = sum(o["position"]["x"] for o in group) / len(group)
-                y = sum(o["position"]["y"] for o in group) / len(group)
-                z = sum(o["position"]["z"] for o in group) / len(group)
-                near = min(kps, key=lambda k: math.dist(kps[k][:2], (x, z)))
-                name = f"{snake(LANDMARK_TYPES[t]).replace(' ', '_')}_{i}"
-                lay.landmarks[name] = Landmark(name, LANDMARK_TYPES[t], [o["objectId"] for o in group],
-                                               (x, y, z), near)
 
     def _step(self, **action: Any) -> Any:
         self.event = self.controller.step(**action)
@@ -470,7 +309,7 @@ class ThorWorld:
         s = self.layout.surfaces[surface]
         held = self.held
         short = self.layout.thor_ids.get(held or "")
-        for dx, dz in _place_points(s.half):
+        for dx, dz in place_points(s.half):
             ev = self._step(action="PlaceObjectAtPoint", objectId=held,
                             position=dict(x=s.center[0] + dx, y=s.height + 0.02, z=s.center[1] + dz))
             if not ev.metadata["lastActionSuccess"]:
@@ -500,6 +339,10 @@ class ThorWorld:
     # ------------------------------------------------------------------
     # Reading the current state (cheap; safe from the event loop)
     # ------------------------------------------------------------------
+    def frame(self) -> Any:
+        """The head camera's latest frame, an RGB array (None before the first load)."""
+        return None if self.event is None else self.event.frame
+
     def agent_pose(self) -> tuple[float, float, float, float]:
         a = self.event.metadata["agent"]
         return a["position"]["x"], a["position"]["z"], a["rotation"]["y"], a["cameraHorizon"]
@@ -522,13 +365,16 @@ class ThorWorld:
         lay = self.layout
         by_id = {o["objectId"]: o for o in self.event.metadata["objects"]}
         dets = self.event.instance_detections2D or {}
+
+        def lookup(pid: str) -> Placed | None:
+            return _placed(by_id[pid]) if pid in by_id else None
         out = {}
         for short, tid in lay.obj_ids.items():
             o = by_id.get(tid)
             if o is None:
                 continue
             out[short] = {"type": snake(o["objectType"]), "label": words(o["objectType"]),
-                          "where": self._where(o, by_id), "x": o["position"]["x"], "z": o["position"]["z"],
+                          "where": where_of(lay, _placed(o), lookup), "x": o["position"]["x"], "z": o["position"]["z"],
                           "y": o["position"]["y"], "visible": self._seen(o, dets, REACH_M)}
         return out
 
@@ -544,56 +390,11 @@ class ThorWorld:
                          "visible": any(self._seen(p, dets, LANDMARK_SEEN_M) for p in parts)}
         return out
 
-    def _where(self, o: dict[str, Any], by_id: dict[str, dict[str, Any]], depth: int = 0) -> str:
-        if o.get("isPickedUp"):
-            return "hand"
-        for pid in o.get("parentReceptacles") or []:
-            p = by_id.get(pid)
-            if p is None:
-                continue
-            if p["objectType"] in SURFACE_TYPES:
-                return (self._nearest_stretch(pid, o["position"]["x"], o["position"]["z"])
-                        or self.layout.alias.get(pid) or snake(p["objectType"]))
-            if p["objectType"] in HELD_CONTAINERS and depth < 2:
-                return self._where(p, by_id, depth + 1)
-            return snake(p["objectType"])        # inside a fridge, a cabinet, a drawer...
-        return "floor" if o["position"]["y"] < 0.2 else "unknown"
-
-    def _nearest_stretch(self, thor_id: str, x: float, z: float) -> str | None:
-        segs = [s for s in self.layout.surfaces.values() if s.thor_id == thor_id]
-        if not segs:
-            return None
-        return min(segs, key=lambda s: math.dist(s.center, (x, z))).name
-
     # ------------------------------------------------------------------
     # Paths on the reachable grid
     # ------------------------------------------------------------------
     def path(self, start: tuple[float, float], goal: tuple[float, float]) -> list[tuple[float, float]] | None:
-        grid = self.layout.grid
-        s = (round(start[0] / GRID), round(start[1] / GRID))
-        g = (round(goal[0] / GRID), round(goal[1] / GRID))
-        if s not in grid:
-            s = min(grid, key=lambda p: (p[0] - s[0]) ** 2 + (p[1] - s[1]) ** 2)
-        prev: dict[tuple[int, int], tuple[int, int] | None] = {s: None}
-        queue = collections.deque([s])
-        while queue:
-            cur = queue.popleft()
-            if cur == g:
-                break
-            for dx, dz in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-                nxt = (cur[0] + dx, cur[1] + dz)
-                if nxt in grid and nxt not in prev:
-                    prev[nxt] = cur
-                    queue.append(nxt)
-        if g not in prev:
-            return None
-        out = []
-        node: tuple[int, int] | None = g
-        while node is not None:
-            out.append((node[0] * GRID, node[1] * GRID))
-            node = prev[node]
-        return out[::-1]
+        return grid_path(self.layout.grid, self.layout.grid_step, start, goal)
 
     def path_length(self, a: tuple[float, float], b: tuple[float, float]) -> float | None:
-        p = self.path(a, b)
-        return None if p is None else round((len(p) - 1) * GRID, 2)
+        return grid_path_length(self.layout.grid, self.layout.grid_step, a, b)

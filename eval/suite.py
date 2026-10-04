@@ -12,6 +12,10 @@ what really happened: where the object is, what the robot said, what it did.
 Every session also lands in the episode log, so a suite run doubles as training
 data for the procedural graph.
 
+Scene names and object ids come from a profile: ``--profile thor`` (the default, the
+AI2-THOR houses below) or the path of a JSON file with the same keys, for another world.
+``--agent`` scores another runtime (the naive baseline, a mutant) instead of agent/.
+
 Writes runs/eval/<stamp>_<tag>.json and prints a table.
 """
 
@@ -30,8 +34,40 @@ from websockets.asyncio.client import connect
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "runs" / "eval"
-H40, H15 = "procthor-train-40", "procthor-train-15"
-K10 = "FloorPlan10"                     # Kitchen 10: counter 1 runs counter_1b · counter_1a · stove · counter_2
+
+# Where each scenario runs and what it asks for. Another world brings its own (--profile some.json).
+PROFILES: dict[str, dict[str, Any]] = {
+    "thor": {
+        "house": "procthor-train-40",                 # fetches, corrections, memory
+        "house2": "procthor-train-15",                # searching, questions mid-task, permission to explore
+        "kitchen": "FloorPlan10",                     # counter 1 runs counter_1b · counter_1a · stove · counter_2
+        "far": ["alarm_clock_1", "alarm clock"],      # in the house, in another room than the user
+        "books": ["book_1", "book_2"],                # "a book", in the house
+        "search": ["apple_1", "apple"],               # in house2, found by looking around
+        "missing": "banana",                          # not in the house
+        "remember_re": "table|kitchen",               # an answer to where the far thing went last time
+        "history_re": "alarm clock|book|banana",      # everything the suite asks for in the house
+        "note": "By the way, my keys are usually on the kitchen counter.",
+        "unsupported": "Put the apple in the microwave.",
+        "other_side": {"object": "spatula_1", "label": "spatula", "landmark": "stove", "from": "counter_1a",
+                       "to": "counter_2", "layout": "stove_1 (stove) is between counter_1a and counter_2"},
+    },
+}
+P: dict[str, Any] = PROFILES["thor"]
+AGENT: str | None = None                          # None: the server's default runtime (agent/)
+
+
+def load_profile(name: str) -> dict[str, Any]:
+    if name in PROFILES:
+        return PROFILES[name]
+    path = Path(name)
+    if not path.is_file():
+        raise SystemExit(f"--profile: {name!r} is neither a profile ({', '.join(PROFILES)}) nor a JSON file")
+    prof = json.loads(path.read_text())
+    missing = sorted(set(PROFILES["thor"]) - set(prof))
+    if missing:
+        raise SystemExit(f"--profile {name}: missing {', '.join(missing)}")
+    return prof
 
 
 class Run:
@@ -66,7 +102,7 @@ class Run:
         self.init = None
         await self.send(type="persona", level="off")        # own goals would make runs less repeatable
         await self.send(type="step", mode="off")             # a step mode left on by the page would hang the run
-        await self.send(type="reset", scene=scene, forget=forget)
+        await self.send(type="reset", scene=scene, forget=forget, **({"agent": AGENT} if AGENT else {}))
         await self.until(lambda: self.init is not None and self.init["config"]["scene"] == scene, 150)
         await asyncio.sleep(1.0)
 
@@ -94,6 +130,14 @@ class Run:
 
     def idle(self) -> bool:
         return not (self.frame or {}).get("runtime", {}).get("active")
+
+    def believed(self, oid: str) -> str | None:
+        """Where the runtime believes a thing is (its belief, not the truth)."""
+        objs = (((self.frame or {}).get("runtime") or {}).get("belief") or {}).get("objects") or {}
+        return (objs.get(oid) or {}).get("where")
+
+    def robot_at(self) -> str | None:
+        return (((self.frame or {}).get("truth") or {}).get("robot") or {}).get("at")
 
     def rows(self, kind: str, **match: Any) -> list[dict[str, Any]]:
         return [r for r in self.trace if r.get("type") == kind and all(r.get(k) == v for k, v in match.items())]
@@ -145,70 +189,73 @@ async def fetch(r: Run, oid: str, label: str, timeout: float = 200) -> tuple[boo
 
 
 async def fetch_other_room(r: Run) -> tuple[bool, str]:
-    await r.load(H40, forget=True)
-    return await fetch(r, "alarm_clock_1", "alarm clock")
+    await r.load(P["house"], forget=True)
+    return await fetch(r, *P["far"])
 
 
 async def fetch_search(r: Run) -> tuple[bool, str]:
-    await r.load(H15, forget=True)
-    return await fetch(r, "apple_1", "apple")
+    await r.load(P["house2"], forget=True)
+    return await fetch(r, *P["search"])
 
 
 async def correction(r: Run) -> tuple[bool, str]:
-    await r.load(H40, forget=False)
+    far, label = P["far"]
+    await r.load(P["house"], forget=False)
     await r.say("Bring me a book.")
     await r.until(lambda: r.started("navigate"), 40)
-    await r.say("No, bring me the alarm clock instead.")
-    ok = await r.until(lambda: r.where("alarm_clock_1") == r.user_surface and r.idle(), 200)
-    books = [b for b in ("book_1", "book_2") if r.where(b) == r.user_surface]
-    return ok and not books, f"alarm clock on {r.where('alarm_clock_1')}; books delivered: {books or 'none'}"
+    await r.say(f"No, bring me the {label} instead.")
+    ok = await r.until(lambda: r.where(far) == r.user_surface and r.idle(), 200)
+    books = [b for b in P["books"] if r.where(b) == r.user_surface]
+    return ok and not books, f"{label} on {r.where(far)}; books delivered: {books or 'none'}"
 
 
 async def stop_resume(r: Run) -> tuple[bool, str]:
-    await r.load(H40, forget=False)
-    await r.say("Bring me the alarm clock.")
+    far, label = P["far"]
+    await r.load(P["house"], forget=False)
+    await r.say(f"Bring me the {label}.")
     await r.until(lambda: r.started("navigate"), 40)
     await asyncio.sleep(2.0)
     await r.say("stop")
     stopped = await r.until(lambda: bool(r.rows("stop")), 10)
     await asyncio.sleep(5.0)
     await r.say("Okay, carry on.")
-    ok = await r.until(lambda: r.where("alarm_clock_1") == r.user_surface and r.idle(), 200)
+    ok = await r.until(lambda: r.where(far) == r.user_surface and r.idle(), 200)
     acks = sum(1 for _, t in r.said if "stopped" in t.lower())
     return ok and stopped and acks == 1, f"halted={stopped}, delivered={ok}, 'stopped' said {acks}x"
 
 
 async def remember_where(r: Run) -> tuple[bool, str]:
-    await r.load(H40, forget=False)                 # memory from the scenarios above
+    await r.load(P["house"], forget=False)          # memory from the scenarios above
     t0 = r.now()
-    await r.say("Where did you put the alarm clock last time?")
-    ok = await r.until(lambda: r.said_since(t0, r"table|kitchen"), 30)
+    await r.say(f"Where did you put the {P['far'][1]} last time?")
+    ok = await r.until(lambda: r.said_since(t0, P["remember_re"]), 30)
     moved = r.started("navigate")
     return ok and not moved, f"answered from memory={ok}, drove first={moved}"
 
 
 async def recall_history(r: Run) -> tuple[bool, str]:
-    await r.load(H40, forget=False)
+    await r.load(P["house"], forget=False)
     t0 = r.now()
     await r.say("What did I ask you to bring me before?")
-    ok = await r.until(lambda: r.said_since(t0, r"alarm clock|book|banana"), 30)   # everything the suite asks for in house 40
+    ok = await r.until(lambda: r.said_since(t0, P["history_re"]), 30)   # everything the suite asks for in the house
     return ok, f"named an earlier request={ok}, recalls={len(r.rows('recall'))}"
 
 
 async def question_midtask(r: Run) -> tuple[bool, str]:
-    await r.load(H15, forget=False)
-    await r.say("Bring me the apple.")
+    oid, label = P["search"]
+    await r.load(P["house2"], forget=False)
+    await r.say(f"Bring me the {label}.")
     await r.until(lambda: r.started("navigate"), 40)
     t0 = r.now()
     await r.say("What are you holding right now?")
     answered = await r.until(lambda: any(st >= t0 for st, _ in r.said), 20)
-    ok = await r.until(lambda: r.where("apple_1") == r.user_surface and r.idle(), 200)
+    ok = await r.until(lambda: r.where(oid) == r.user_surface and r.idle(), 200)
     return ok and answered, f"answered={answered}, delivered={ok}"
 
 
 async def note_only(r: Run) -> tuple[bool, str]:
-    await r.load(H15, forget=False)
-    await r.say("By the way, my keys are usually on the kitchen counter.")
+    await r.load(P["house2"], forget=False)
+    await r.say(P["note"])
     await asyncio.sleep(15)
     noted = bool(r.rows("note_saved"))
     moved = r.started("navigate") or r.started("pick")
@@ -216,18 +263,19 @@ async def note_only(r: Run) -> tuple[bool, str]:
 
 
 async def unsupported(r: Run) -> tuple[bool, str]:
-    await r.load(H15, forget=False)
+    await r.load(P["house2"], forget=False)
     t0 = r.now()
-    await r.say("Put the apple in the microwave.")
+    await r.say(P["unsupported"])
     ok = await r.until(lambda: r.said_since(t0, r"can't|cannot|can not|unable|not able|don't have a way"), 40)
     return ok, f"said it can't={ok}"
 
 
 async def missing_object(r: Run) -> tuple[bool, str]:
-    await r.load(H40, forget=False)
+    missing = P["missing"]
+    await r.load(P["house"], forget=False)
     t0 = r.now()
-    await r.say("Bring me the banana.")                  # there is no banana in this house
-    told = await r.until(lambda: r.said_since(t0, r"can't find|couldn't find|could not find|no banana|"
+    await r.say(f"Bring me the {missing}.")             # there is none in this house
+    told = await r.until(lambda: r.said_since(t0, rf"can't find|couldn't find|could not find|no {missing}|"
                                                    r"not find|didn't find|don't see|haven't found|isn't here|not here"), 150)
     await r.until(r.idle, 20)
     looks = len(r.rows("started", tool="navigate"))
@@ -257,8 +305,9 @@ def _types_present(r: Run) -> set[str]:
 
 async def hold_on(r: Run) -> tuple[bool, str]:
     """A stop the keyword check misses: only System 1's label can stop the robot."""
-    await r.load(H40, forget=False)
-    await r.say("Bring me the alarm clock.")
+    far, label = P["far"]
+    await r.load(P["house"], forget=False)
+    await r.say(f"Bring me the {label}.")
     await r.until(lambda: r.started("navigate"), 40)
     await asyncio.sleep(2.0)
     t_say = time.monotonic()
@@ -268,45 +317,47 @@ async def hold_on(r: Run) -> tuple[bool, str]:
     lab = r.label("hang on a sec")
     await asyncio.sleep(3.0)
     await r.say("okay, go ahead")
-    ok = await r.until(lambda: r.where("alarm_clock_1") == r.user_surface and r.idle(), 200)
+    ok = await r.until(lambda: r.where(far) == r.user_surface and r.idle(), 200)
     return (ok and stopped and lab.get("source") == "system1",
             f"stopped on the label={stopped} after {took:.1f}s (label {lab.get('kind')} from {lab.get('source')}, "
             f"P={lab.get('confidence')}), delivered={ok}")
 
 
 async def replace_task(r: Run) -> tuple[bool, str]:
-    await r.load(H40, forget=False)
+    far, label = P["far"]
+    await r.load(P["house"], forget=False)
     await r.say("Bring me a book.")
     await r.until(lambda: r.started("navigate"), 40)
-    text = "Never mind the book, get me the alarm clock."
+    text = f"Never mind the book, get me the {label}."
     await r.say(text)
-    ok = await r.until(lambda: r.where("alarm_clock_1") == r.user_surface and r.idle(), 200)
-    books = [b for b in ("book_1", "book_2") if r.where(b) == r.user_surface]
+    ok = await r.until(lambda: r.where(far) == r.user_surface and r.idle(), 200)
+    books = [b for b in P["books"] if r.where(b) == r.user_surface]
     lab = r.label(text)
     return (ok and not books,
-            f"alarm clock on {r.where('alarm_clock_1')}; books delivered: {books or 'none'}; "
+            f"{label} on {r.where(far)}; books delivered: {books or 'none'}; "
             f"label {lab.get('kind')} from {lab.get('source')}")
 
 
 async def addition(r: Run) -> tuple[bool, str]:
-    await r.load(H40, forget=False)
-    await r.say("Bring me the alarm clock.")
+    far, label = P["far"]
+    await r.load(P["house"], forget=False)
+    await r.say(f"Bring me the {label}.")
     await r.until(lambda: r.started("navigate"), 40)
     text = "Also bring me a book."
     await r.say(text)
-    ok = await r.until(lambda: r.where("alarm_clock_1") == r.user_surface and r.idle()
-                       and any(r.where(b) == r.user_surface for b in ("book_1", "book_2")), 320)
-    books = [b for b in ("book_1", "book_2") if r.where(b) == r.user_surface]
+    ok = await r.until(lambda: r.where(far) == r.user_surface and r.idle()
+                       and any(r.where(b) == r.user_surface for b in P["books"]), 320)
+    books = [b for b in P["books"] if r.where(b) == r.user_surface]
     lab = r.label(text)
-    return ok, (f"alarm clock on {r.where('alarm_clock_1')}, books delivered: {books or 'none'}; "
+    return ok, (f"{label} on {r.where(far)}, books delivered: {books or 'none'}; "
                 f"label {lab.get('kind')} from {lab.get('source')}")
 
 
 async def observations(r: Run) -> tuple[bool, str]:
     """System 1 watches the camera during a fetch: it must look, and never report a thing the house lacks."""
-    await r.load(H40, forget=False)
+    await r.load(P["house"], forget=False)
     n0 = len(r.s1_calls("observe"))
-    delivered, where = await fetch(r, "alarm_clock_1", "alarm clock")
+    delivered, where = await fetch(r, *P["far"])
     obs = [row for row in r.rows("observation") if row.get("source") == "system1"]
     present = _types_present(r)
     fake = []
@@ -327,9 +378,9 @@ async def observations(r: Run) -> tuple[bool, str]:
 
 async def procedural(r: Run) -> tuple[bool, str]:
     """The planner gets what the procedural graph learned from earlier episodes."""
-    await r.load(H40, forget=False)
+    await r.load(P["house"], forget=False)
     n0 = max(r.calls or {0: None})
-    ok, note = await fetch(r, "alarm_clock_1", "alarm clock")
+    ok, note = await fetch(r, *P["far"])
     inputs = [str(c.get("input") or "") for n, c in r.calls.items() if n > n0 and c.get("via") == "model"]
     guided = sum("LEARNED FROM PAST TASKS" in i for i in inputs)
     return ok and guided > 0, f"{note}; planner calls with learned guidance: {guided}/{len(inputs)}"
@@ -337,7 +388,7 @@ async def procedural(r: Run) -> tuple[bool, str]:
 
 async def permission_yes(r: Run) -> tuple[bool, str]:
     """In a house it hasn't mapped, the robot asks to look around; a yes (labelled by System 1) starts it."""
-    await r.load(H15, forget=True)
+    await r.load(P["house2"], forget=True)
     t0 = r.now()
     await r.send(type="persona", level="optimize")
     asked = await r.until(lambda: any(st >= t0 and text.rstrip().endswith("?") for st, text in r.said), 90)
@@ -355,20 +406,46 @@ async def permission_yes(r: Run) -> tuple[bool, str]:
 
 
 async def other_side(r: Run) -> tuple[bool, str]:
-    """"The other side of the stove" needs to know what the stove sits between. The spatula starts
-    on counter_1a, right of it is the stove, then counter_2. Memory is kept (it's your kitchen)."""
-    await r.load(K10, forget=False)
+    """"The other side of the stove" needs to know what the stove sits between. In Kitchen 10 the
+    spatula starts on counter_1a, right of it is the stove, then counter_2. Memory is kept (it's your kitchen)."""
+    o = P["other_side"]
+    await r.load(P["kitchen"], forget=False)
     n0 = max(r.calls or {0: None})
-    start = r.where("spatula_1")
-    await r.say("move the spatula to the other side of the stove")
-    ok = await r.until(lambda: r.where("spatula_1") == "counter_2" and r.idle(), 200)
+    start = r.where(o["object"])
+    await r.say(f"move the {o['label']} to the other side of the {o['landmark']}")
+    ok = await r.until(lambda: r.where(o["object"]) == o["to"] and r.idle(), 200)
     inputs = [str(c.get("input") or "") for n, c in r.calls.items() if n > n0 and c.get("via") == "model"]
-    knew = any("stove_1 (stove) is between counter_1a and counter_2" in i for i in inputs)
+    knew = any(o["layout"] in i for i in inputs)
     checks = [f"{c.get('goal')!r}: {c.get('ok')}" for c in r.rows("goal_check")]
-    return ok and start == "counter_1a", (f"spatula_1 from {start} to {r.where('spatula_1')}; "
-                                         f"LAYOUT had the stove between counter_1a and counter_2: {knew}; "
-                                         f"goal checks: {', '.join(checks) or 'none'}")
+    return ok and start == o["from"], (f"{o['object']} from {start} to {r.where(o['object'])}; "
+                                       f"LAYOUT had \"{o['layout']}\": {knew}; "
+                                       f"goal checks: {', '.join(checks) or 'none'}")
 
+
+async def moved_mug(r: Run) -> tuple[bool, str]:
+    """Someone moves the thing while the robot isn't looking (a world with people; doc §35).
+    The robot sees it, leaves, a person moves it out of sight, then the user asks for it."""
+    m = P["moved_mug"]
+    oid, label = m["object"]
+    await r.load(m["scene"], forget=True)
+    await r.say(m["look"])
+    saw = await r.until(lambda: r.believed(oid) == m["was"] and r.idle(), 150)
+    await r.say(m["back"])
+    back = await r.until(lambda: r.robot_at() == r.user_surface and r.idle(), 120)
+    moved = await r.until(lambda: r.where(oid) == m["now"], 120)
+    stale = r.believed(oid) == m["was"]
+    n0 = len(r.trace)
+    await r.say(m["ask"])
+    ok = await r.until(lambda: r.where(oid) == r.user_surface and r.idle(), 300)
+    after = r.trace[n0:]
+    trips = [x["args"].get("to") for x in after if x.get("type") == "started" and x.get("tool") == "navigate"]
+    gone = any(x.get("type") == "result" and x.get("skill") == "look" and (x.get("data") or {}).get("at") == m["was"]
+               and oid not in ((x.get("data") or {}).get("saw") or []) for x in after)
+    return ok and saw and moved, (f"saw it first={saw}, came back={back}, moved unseen={moved}, believed stale={stale}; "
+                                  f"trips {trips}; noticed it gone={gone}; {oid} ended on {r.where(oid)}")
+
+
+NEEDS = {"moved_mug": "moved_mug"}        # scenarios that need a profile key (a world with people)
 
 SCENARIOS: list[tuple[str, Callable[[Run], Awaitable[tuple[bool, str]]]]] = [
     ("fetch_other_room", fetch_other_room),
@@ -388,6 +465,7 @@ SCENARIOS: list[tuple[str, Callable[[Run], Awaitable[tuple[bool, str]]]]] = [
     ("procedural", procedural),
     ("permission_yes", permission_yes),
     ("other_side", other_side),
+    ("moved_mug", moved_mug),
 ]
 
 
@@ -396,7 +474,12 @@ async def main() -> int:
     ap.add_argument("--url", default="ws://127.0.0.1:8765/ws")
     ap.add_argument("--only", default="", help="comma-separated scenario names")
     ap.add_argument("--tag", default="run")
+    ap.add_argument("--profile", default="thor", help="scene names and object ids: thor, or a JSON file")
+    ap.add_argument("--agent", help="the runtime to score, as the page's agent menu names it "
+                                    "(baseline.agent, agent.mutants:trust_success, ...); default agent/")
     args = ap.parse_args()
+    global P, AGENT
+    P, AGENT = load_profile(args.profile), args.agent
     only = {s for s in args.only.split(",") if s}
     results = []
     async with connect(args.url, max_size=2 ** 24) as ws:
@@ -405,6 +488,8 @@ async def main() -> int:
         for name, fn in SCENARIOS:
             if only and name not in only:
                 continue
+            if name in NEEDS and NEEDS[name] not in P:
+                continue                                  # this world can't stage it
             t0 = time.monotonic()
             try:
                 passed, note = await fn(run)
@@ -417,7 +502,7 @@ async def main() -> int:
                   f"rejected {res['rejected']}  recalls {res['recalls']}  tokens {res['tokens_in']:>6}  "
                   f"labels {res['s1_labels']}/{res['labels']} by System 1  {note}", flush=True)
         reader.cancel()
-    summary = {"tag": args.tag, "wall": round(time.time()), "passed": sum(r["passed"] for r in results),
+    summary = {"tag": args.tag, "profile": args.profile, "agent": args.agent or "agent", "wall": round(time.time()), "passed": sum(r["passed"] for r in results),
                "total": len(results), "decisions": sum(r["decisions"] for r in results),
                "tokens_in": sum(r["tokens_in"] for r in results), "results": results}
     OUT.mkdir(parents=True, exist_ok=True)

@@ -189,8 +189,10 @@ episode log, with no model call and nothing moving, in at most 1,100 characters:
 
 ## The robot API
 
-The runtime drives the robot only through this interface (`thor/robot.py`, here backed by
-AI2-THOR), so a real robot can stand in by implementing the same calls:
+The runtime drives the robot only through this interface (`sim/robot.py`, here over an
+AI2-THOR world), so a real robot can stand in by implementing the same calls. The robot in
+turn drives any world that meets `sim/world.py`, and learns what it sees from a perception
+source (`perception/source.py`):
 
 | Call | Returns |
 |---|---|
@@ -248,7 +250,9 @@ minutes; later starts take seconds.
 
 Command-line options: `--port`, `--scene` (`FloorPlan10` is a single kitchen), `--soul`
 (`robot`, `robot_chatty`, `robot_cleaning`, `robot_security`), `--soul-file` (a custom soul)
-and `--speed` (e.g. `0.5`). The page changes all of these too.
+and `--speed` (e.g. `0.5`). The page changes all of these too. Two more pick what the robot
+lives in and how it sees: `--world module:factory` (default `thor:create_world`) and
+`--perception module:factory` (default the stand-in detector).
 
 ### System 1
 
@@ -353,6 +357,8 @@ server restarts. From the command line, `--soul-file my_soul.md` loads one at st
 # scored against the simulator's truth
 .venv-thor/bin/python eval/suite.py
 .venv-thor/bin/python eval/suite.py --only correction,stop_resume,hold_on,replace_task
+.venv-thor/bin/python eval/suite.py --agent baseline.agent        # score another runtime
+.venv-thor/bin/python eval/suite.py --profile my_world.json       # another world's scenes and object ids
 ```
 
 The scenarios cover:
@@ -377,15 +383,18 @@ brains/       interface.py (kinds, tools, the System 1 contract), composite.py (
               observations), system1.py (Gemini 3.8 Live for both), frame_gate.py
 personas/     the robot's souls: robot.md, robot_chatty.md, robot_cleaning.md, robot_security.md
 llmkit/       model clients
-thor/         world.py (the house, the simulator), robot.py (sensors, nav stack, arms, say),
-              procthor.py (ProcTHOR-10K houses)
+thor/         world.py (the house, the simulator), procthor.py (ProcTHOR-10K houses),
+              create_world (the server's default world)
+perception/   source.py (what the robot sees: the contract and the stand-in detector)
 ui/           server.py (the page's server; feeds System 1), index.html,
               views/ (belief map, memory, the How it works diagram), robot_map.py, recorder.py
 eval/         suite.py (17 scenarios), evolve.py (learn procedural rules), system1_load.py,
               system1_routes.py (System 1 latency and label checks)
 tests/        unit tests, and system1_stub.py (a System 1 stand-in with fixed answers)
 baseline/     a naive sequential runtime, for contrast
-sim/          clock (one clock for everything; speed and pause), event log, goals
+sim/          clock (one clock for everything; speed and pause), event log, goals,
+              robot.py (sensors, nav stack, arms, say), world.py (the world seam),
+              layout.py (a home turned into spots, surfaces and short ids)
 runs/         memory/, episodes/, procedures.json, eval/, procthor/ (not committed)
 ```
 
