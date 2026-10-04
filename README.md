@@ -215,8 +215,24 @@ source (`perception/source.py`):
 `agent/skills.py` wraps each skill with a timeout (navigate: from the path length; look and
 reachability 12 s; pick 15 s; place 12 s), adding `TIMEOUT` and `REJECTED` to the statuses.
 
-In the simulator, `perception()` reports the objects actually in the head camera's view, with
-exact labels: a stand-in for a detector. The runtime never sees anything beyond that.
+By default, in the simulator, `perception()` reports the objects actually in the head camera's
+view, with exact labels: a stand-in for a detector. The runtime never sees anything beyond that.
+
+With `--perception perception.vlm:create` the robot sees through a vision model instead, so its
+memory of what is where never comes from the simulator. Each picture from the head camera goes to
+the model, which boxes and names the movable things (with what else each might be, "magazine
+(maybe newspaper)"). The robot places each box in the room from its own camera pose and the map's
+surface heights (`perception/project.py`) and gives it its own id (`perception/entities.py`). A look
+sends all its views at once. Between looks a picture goes only when the view is new. `look` takes
+an optional `for` ("newspaper"), so the model watches for that thing by name.
+
+Navigation and the arms still move in the simulator (on a real robot: the nav stack and the
+manipulation stack). A pick is aimed at where perception says the thing is (`pickup_at`), and
+gets whatever is really there, so a wrong detection is a real miss.
+`perception.vlm:synthetic` draws the boxes from the simulator's truth with seeded noise
+(`WORLDLINE_SYNTH="miss=0.15,confuse=0.1,jitter=8"`), for tests and noise studies with no keys.
+`WORLDLINE_VLM_MODEL` picks the model (default `gemini-3.8-flash`; `gemini-3.8-flash:think` names
+things better, at about 5 s a picture).
 
 ## Set up and run
 
@@ -252,7 +268,8 @@ Command-line options: `--port`, `--scene` (`FloorPlan10` is a single kitchen), `
 (`robot`, `robot_chatty`, `robot_cleaning`, `robot_security`), `--soul-file` (a custom soul)
 and `--speed` (e.g. `0.5`). The page changes all of these too. Two more pick what the robot
 lives in and how it sees: `--world module:factory` (default `thor:create_world`) and
-`--perception module:factory` (default the stand-in detector).
+`--perception module:factory` (default the stand-in detector; `perception.vlm:create` for a vision
+model on the camera's frames).
 
 ### System 1
 
@@ -385,7 +402,9 @@ personas/     the robot's souls: robot.md, robot_chatty.md, robot_cleaning.md, r
 llmkit/       model clients
 thor/         world.py (the house, the simulator), procthor.py (ProcTHOR-10K houses),
               create_world (the server's default world)
-perception/   source.py (what the robot sees: the contract and the stand-in detector)
+perception/   source.py (what the robot sees: the contract and the stand-in detector),
+              vlm.py (seeing through a vision model, or a synthetic detector), project.py (a box to
+              a place in the room), entities.py (the robot's own names for what it saw)
 ui/           server.py (the page's server; feeds System 1), index.html,
               views/ (belief map, memory, the How it works diagram), robot_map.py, recorder.py
 eval/         suite.py (17 scenarios), evolve.py (learn procedural rules), system1_load.py,

@@ -677,7 +677,7 @@ class Runtime:
         h.task = asyncio.current_task()
         async with self._sense_lock:
             entry.status, entry.t_start = "running", self.clock.now()
-            out = await run_goal(self.robot, self.clock, "look", args, SENSE_TIMEOUT)
+            out = await run_goal(self.robot, self.clock, "look", args, self._sense_timeout())
         self._finish(h, entry, out)
 
     # ------------------------------------------------------------------
@@ -984,7 +984,7 @@ class Runtime:
             if h.cancel_requested:
                 out = Outcome("CANCELED", {"reason": "cancelled before start"})
             else:
-                out = await run_goal(self.robot, self.clock, h.skill, h.args, SENSE_TIMEOUT,
+                out = await run_goal(self.robot, self.clock, h.skill, h.args, self._sense_timeout(),
                                      on_goal=self._binder(h))
         self._finish(h, e, out)
 
@@ -1000,6 +1000,11 @@ class Runtime:
         self.state.record("behavior_started", self.clock.now(), priority=3,
                           tool=call.tool, args=dict(call.args), version=v,
                           control_epoch=self.task.control_epoch)
+
+    def _sense_timeout(self) -> float:
+        """A look's limit: its renders, plus whatever the robot says its perception needs on top
+        (a model looking at the pictures)."""
+        return SENSE_TIMEOUT + float(getattr(self.robot, "sense_budget_s", 0.0) or 0.0)
 
     def _binder(self, h: ActionHandle):
         def bind(goal: Any) -> None:

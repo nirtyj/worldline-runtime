@@ -5,6 +5,7 @@ simulation keeps ticking while a request is in flight.
 
     client = make_client(provider="anthropic", model="claude-haiku-4-5-20251001")
     call = await client.tool_call(system, user_text, tools)   # -> ToolUse(name, args, ...)
+    call = await client.tool_call(system, user_text, tools, images=[jpeg_bytes])   # with pictures
 
 ``tools`` is a list of {"name", "description", "parameters": <JSON schema>}.
 The call forces exactly one tool call:
@@ -25,6 +26,7 @@ The request and response shapes follow the public API docs.
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import os
 import random
@@ -101,12 +103,18 @@ class AnthropicClient(_Base):
         self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
         self.url = url or os.environ.get("ANTHROPIC_URL", ANTHROPIC_URL)
 
-    def build_request(self, system: str, user_text: str, tools: list[dict[str, Any]]) -> dict[str, Any]:
+    def build_request(self, system: str, user_text: str, tools: list[dict[str, Any]],
+                      images: list[bytes] | None = None) -> dict[str, Any]:
+        content: Any = user_text
+        if images:
+            content = [{"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
+                                                     "data": base64.b64encode(img).decode()}} for img in images]
+            content.append({"type": "text", "text": user_text})
         body: dict[str, Any] = {
             "model": self.model,
             "max_tokens": self.max_tokens,
             "system": [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
-            "messages": [{"role": "user", "content": user_text}],
+            "messages": [{"role": "user", "content": content}],
             "tools": [{"name": t["name"], "description": t["description"], "input_schema": t["parameters"]}
                       for t in tools],
             "tool_choice": {"type": "any", "disable_parallel_tool_use": True},
@@ -128,10 +136,11 @@ class AnthropicClient(_Base):
             + int(usage.get("cache_creation_input_tokens", 0) or 0)
         return use["name"], dict(use.get("input") or {}), text, tokens_in, int(usage.get("output_tokens", 0))
 
-    async def tool_call(self, system: str, user_text: str, tools: list[dict[str, Any]]) -> ToolUse:
+    async def tool_call(self, system: str, user_text: str, tools: list[dict[str, Any]],
+                        images: list[bytes] | None = None) -> ToolUse:
         if not self.api_key:
             raise LLMError("ANTHROPIC_API_KEY is not set")
-        body = self.build_request(system, user_text, tools)
+        body = self.build_request(system, user_text, tools, images)
         headers = {"x-api-key": self.api_key, "anthropic-version": ANTHROPIC_VERSION}
         t0 = time.monotonic()
         resp = await self._send(self.url, headers, body)
@@ -148,11 +157,16 @@ class OpenAIClient(_Base):
         self.base_url = (base_url or os.environ.get("OPENAI_BASE_URL") or "http://localhost:8000/v1").rstrip("/")
         self.api_key = api_key or os.environ.get("OPENAI_API_KEY", "")
 
-    def build_request(self, system: str, user_text: str, tools: list[dict[str, Any]]) -> dict[str, Any]:
+    def build_request(self, system: str, user_text: str, tools: list[dict[str, Any]],
+                      images: list[bytes] | None = None) -> dict[str, Any]:
+        content: Any = user_text
+        if images:
+            content = [{"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + base64.b64encode(img).decode()}}
+                       for img in images] + [{"type": "text", "text": user_text}]
         body: dict[str, Any] = {
             "model": self.model,
             "max_tokens": self.max_tokens,
-            "messages": [{"role": "system", "content": system}, {"role": "user", "content": user_text}],
+            "messages": [{"role": "system", "content": system}, {"role": "user", "content": content}],
             "tools": [{"type": "function", "function": {"name": t["name"], "description": t["description"],
                                                          "parameters": t["parameters"]}} for t in tools],
             "tool_choice": "required",
@@ -181,8 +195,9 @@ class OpenAIClient(_Base):
         usage = resp.get("usage") or {}
         return fn.get("name", ""), args, text, int(usage.get("prompt_tokens", 0)), int(usage.get("completion_tokens", 0))
 
-    async def tool_call(self, system: str, user_text: str, tools: list[dict[str, Any]]) -> ToolUse:
-        body = self.build_request(system, user_text, tools)
+    async def tool_call(self, system: str, user_text: str, tools: list[dict[str, Any]],
+                        images: list[bytes] | None = None) -> ToolUse:
+        body = self.build_request(system, user_text, tools, images)
         headers = {"authorization": f"Bearer {self.api_key}"} if self.api_key else {}
         t0 = time.monotonic()
         resp = await self._send(self.base_url + "/chat/completions", headers, body)
@@ -237,20 +252,24 @@ class GeminiClient(_Base):
         tout = int(getattr(usage, "candidates_token_count", 0) or 0) + int(getattr(usage, "thoughts_token_count", 0) or 0)
         return calls[0].name, dict(calls[0].args or {}), text, tin, tout
 
-    async def tool_call(self, system: str, user_text: str, tools: list[dict[str, Any]]) -> ToolUse:
+    async def tool_call(self, system: str, user_text: str, tools: list[dict[str, Any]],
+                        images: list[bytes] | None = None) -> ToolUse:
         if not self.api_key:
             raise LLMError("GEMINI_API_KEY is not set: add it to .env and restart the server")
         from google import genai
-        from google.genai import errors
+        from google.genai import errors, types
         if self._client is None:
             self._client = genai.Client(api_key=self.api_key)
         config = self.build_config(system, tools)
+        contents: Any = user_text
+        if images:
+            contents = [types.Part.from_bytes(data=img, mime_type="image/jpeg") for img in images] + [user_text]
         delay = 1.0
         t0 = time.monotonic()
         for attempt in range(self.retries + 1):
             try:
                 resp = await asyncio.wait_for(
-                    self._client.aio.models.generate_content(model=self.model, contents=user_text, config=config),
+                    self._client.aio.models.generate_content(model=self.model, contents=contents, config=config),
                     self.timeout)
                 break
             except errors.APIError as e:

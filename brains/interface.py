@@ -49,7 +49,9 @@ TOOLS: dict[str, dict[str, Any]] = {
     },
     "look": {
         "description": "Look at the surfaces at the current keypoint and at both hands (0.5 s). Updates belief.",
-        "args": {},
+        "args": {"for": {"type": "string", "optional": True,
+                         "description": "When searching: what you are looking for, in a few plain words "
+                                        "('newspaper'), so the robot's perception watches for it by that name."}},
     },
     "reachability": {
         "description": "Check whether an object can be picked from the current keypoint, and with which arm. Required before every pick.",

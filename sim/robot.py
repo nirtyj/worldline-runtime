@@ -50,6 +50,8 @@ class SimRobot:
     def __init__(self, world: World, clock: Any, log: Any, perception: PerceptionSource | None = None) -> None:
         self.world = world
         self.perceiver = perception if perception is not None else StandIn(world)
+        # how much longer a look may take than its renders (a model looking at the pictures)
+        self.sense_budget_s = float(getattr(self.perceiver, "latency_s", 0.0) or 0.0)
         self.clock = clock
         self.log = log
         self._goal_ids = itertools.count(1)
@@ -211,7 +213,7 @@ class SimRobot:
         self._public("goal_accepted", goal=goal.id, skill=skill, args=dict(args), **self._obj(args.get("object")))
         coro = {
             "navigate": lambda: self._navigate(goal, args["to"]),
-            "look": lambda: self._look(goal, bool(args.get("glance"))),
+            "look": lambda: self._look(goal, bool(args.get("glance")), args.get("for")),
             "reachability": lambda: self._reachability(goal, args["object"]),
             "pick": lambda: self._pick(goal, args["object"], args["arm"]),
             "place": lambda: self._place(goal, args["object"], args["arm"]),
@@ -379,7 +381,7 @@ class SimRobot:
                 return name
         return None
 
-    async def _look(self, goal: Goal, glance: bool = False) -> GoalResult:
+    async def _look(self, goal: Goal, glance: bool = False, looking_for: str | None = None) -> GoalResult:
         """Scan: turn the head to three headings at two tilts and report what the
         camera saw, grouped by where each thing is, plus the views it covered, so
         the runtime can tell "looked there and it's gone" from "never looked".
@@ -403,6 +405,14 @@ class SimRobot:
         yaws = SCAN_YAWS
         if glance:
             yaws, tilts = (0.0,), tilts[:2]
+        capture = getattr(self.perceiver, "capture", None)
+        shots = []
+
+        def take(objs: dict[str, dict[str, Any]], lms: dict[str, dict[str, Any]]) -> None:
+            for short, o in objs.items():
+                if o["where"] != "hand":
+                    seen[short] = o
+            marks.update(lms)
         try:
             for dy in yaws:
                 for tilt in tilts:
@@ -410,16 +420,20 @@ class SimRobot:
                     await self.world.call(self.world.teleport, x, z, heading, tilt)   # a fresh render
                     views.append({"x": round(x, 2), "z": round(z, 2), "yaw": round(heading, 1),
                                   "tilt": tilt, "fov": FOV_DEG, "range": REACH_M})
-                    objs, lms = await self.perceiver.view()
-                    for short, o in objs.items():
-                        if o["where"] != "hand":
-                            seen[short] = o
-                    marks.update(lms)
+                    if capture is not None:
+                        shots.append(capture(looking_for))   # detected all together below
+                    else:
+                        take(*await self.perceiver.view())
                     why = await self._wait(goal, SCAN_STEP_S, epoch)
                     if why:
                         return GoalResult("CANCELED" if why == "canceled" else "ABORTED", {"reason": why})
         finally:
             await self.world.call(self.world.teleport, x, z, yaw0, tilt0)   # face forward again
+        for objs, lms in await asyncio.gather(*(self.perceiver.detect(s) for s in shots)):
+            take(objs, lms)
+        if self._halt_epoch != epoch or goal.cancel_requested:
+            return GoalResult("CANCELED" if goal.cancel_requested else "ABORTED",
+                              {"reason": "canceled" if goal.cancel_requested else "halted"})
         # what counts as "seen here" for reachability: a glance adds to the last scan of this spot
         self._scanned = (at, set(seen) | (self._scanned[1] if glance and self._scanned[0] == at else set()))
         surfaces: dict[str, list[dict[str, Any]]] = {}
@@ -471,12 +485,20 @@ class SimRobot:
                 self.arm_phase[arm] = "stopped"
                 return GoalResult("ABORTED", {"reason": "halted", "holding": self.hand[arm] is not None, "phase": phase})
             if phase == "close":
-                ok, err = await self.world.call(self.world.pickup, short)
+                # the arm closes where perception says the thing is: the stand-in names the world's
+                # object; a detector gives a position, and the hand takes whatever is really there
+                spec = self.perceiver.grasp(short) if hasattr(self.perceiver, "grasp") else None
+                if spec and "at" in spec:
+                    ok, err = await self.world.call(self.world.pickup_at, *spec["at"], spec.get("radius", 0.3))
+                else:
+                    ok, err = await self.world.call(self.world.pickup, (spec or {}).get("id", short))
                 if not ok:
                     self.log.emit("grasp_missed", arm=arm, object=short, reason=err[:120])
                     self.arm_phase[arm] = "home"
                     return GoalResult("ABORTED", {"reason": "grasp_failed", "detail": err[:120], "holding": False})
                 self.hand[arm] = short
+                if hasattr(self.perceiver, "held"):
+                    self.perceiver.held(short)
                 self.log.emit("grasp_closed", arm=arm, object=short)
         self.arm_phase[arm] = "lifted"
         if goal.cancel_requested:
@@ -503,6 +525,8 @@ class SimRobot:
                     self.arm_phase[arm] = "lifted"
                     return GoalResult("ABORTED", {"reason": "no_room_on_surface", "detail": err[:120], "holding": True})
                 self.hand[arm] = None
+                if hasattr(self.perceiver, "released"):
+                    self.perceiver.released(short, surface)
                 self.log.emit("object_placed", arm=arm, object=short, surface=surface)
         self.arm_phase[arm] = "home"
         return GoalResult("SUCCEEDED", {"holding": False, "surface": surface})

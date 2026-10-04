@@ -58,6 +58,10 @@ class World(Protocol):
     def jpeg(self, which: str = "head") -> bytes:
         """The latest "head" or "top" (overhead) frame as JPEG; b"" if there is none."""
 
+    def camera(self) -> dict[str, Any]:
+        """The head camera itself: w, h (pixels), hfov, vfov (degrees), height (metres). The robot
+        knows its own camera, so perception may use this to place what it sees."""
+
     def path(self, start: tuple[float, float], goal: tuple[float, float]) -> list[tuple[float, float]] | None:
         """Grid points from start to goal on the free floor, or None if there is no way."""
 
@@ -71,6 +75,10 @@ class World(Protocol):
 
     def pickup(self, short: str) -> tuple[bool, str]:
         """Take that object into the hand: (ok, error)."""
+
+    def pickup_at(self, x: float, y: float, z: float, radius: float) -> tuple[bool, str]:
+        """Close the hand at that point: take whatever pickupable thing is really there (within
+        radius, on the floor plane), or fail. A detector's belief aims the arm; the world decides."""
 
     def put(self, surface: str) -> tuple[bool, str]:
         """Put the held object down on that stretch, in front of the robot: (ok, error)."""

@@ -430,8 +430,10 @@ that never connects, is retried once on a new one.
 | System 1's observations stay unverified hints | a vision model sometimes sees what isn't there | the planner may look to confirm something that was right |
 | Recall on demand instead of all memory in the prompt | about 4,200 tokens a decision instead of growing with the house | one extra call when it needs memory |
 
-Where it's thin: perception is a stand-in that reads the simulator's object list
-(`perception/source.py`; another source plugs in with `--perception`);
+Where it's thin: perception defaults to a stand-in that reads the simulator's object list
+(`perception/source.py`). A vision model on the camera's frames (`perception/vlm.py`) is the
+honest alternative, but it names a decorated room's things loosely ("magazine" for a newspaper)
+and sees more than the simulator models;
 appliances are only landmarks, not things it can open; the speech timer is an estimate
 with no audio behind it; the procedural graph has few failures to learn from.
 
@@ -451,6 +453,7 @@ with no audio behind it; the procedural graph has few failures to learn from.
 | model clients (Gemini, Anthropic, OpenAI-compatible) | `llmkit/` |
 | robot: sensors, nav stack, arms, say | `sim/robot.py` |
 | what the robot sees (the stand-in detector) | `perception/source.py` |
+| seeing through a vision model: boxes to places, the robot's own names | `perception/vlm.py`, `project.py`, `entities.py` |
 | the world seam; a home turned into names | `sim/world.py`, `sim/layout.py` |
 | the house and the simulator (AI2-THOR) | `thor/world.py`, `thor/procthor.py` |
 | server, page, the robot's map | `ui/server.py`, `ui/index.html`, `ui/views/`, `ui/robot_map.py` |

@@ -136,6 +136,13 @@ class Run:
         objs = (((self.frame or {}).get("runtime") or {}).get("belief") or {}).get("objects") or {}
         return (objs.get(oid) or {}).get("where")
 
+    def believed_any(self, oid: str, word: str) -> set[str]:
+        """Where the runtime believes things are that are that one: its own id for it, or (seeing
+        through a detector, which names things itself) anything whose type or label says the word."""
+        objs = (((self.frame or {}).get("runtime") or {}).get("belief") or {}).get("objects") or {}
+        return {o.get("where") for k, o in objs.items()
+                if k == oid or word in str(o.get("label", "")).lower() or word in str(o.get("type", "")).replace("_", " ")}
+
     def robot_at(self) -> str | None:
         return (((self.frame or {}).get("truth") or {}).get("robot") or {}).get("at")
 
@@ -429,11 +436,15 @@ async def moved_mug(r: Run) -> tuple[bool, str]:
     oid, label = m["object"]
     await r.load(m["scene"], forget=True)
     await r.say(m["look"])
-    saw = await r.until(lambda: r.believed(oid) == m["was"] and r.idle(), 150)
+    # seeing through a detector, the robot may call the thing something else ("magazine"): having
+    # looked at that furniture is enough here; whether the right thing reached the user is truth
+    looked = lambda: any((x.get("data") or {}).get("at", "").startswith(m["was"].rstrip("abcdefgh"))   # noqa: E731
+                         for x in r.rows("result", skill="look", status="SUCCEEDED"))
+    saw = await r.until(lambda: (m["was"] in r.believed_any(oid, label) or looked()) and r.idle(), 150)
     await r.say(m["back"])
     back = await r.until(lambda: r.robot_at() == r.user_surface and r.idle(), 120)
     moved = await r.until(lambda: r.where(oid) == m["now"], 120)
-    stale = r.believed(oid) == m["was"]
+    stale = m["was"] in r.believed_any(oid, label)
     n0 = len(r.trace)
     await r.say(m["ask"])
     ok = await r.until(lambda: r.where(oid) == r.user_surface and r.idle(), 300)

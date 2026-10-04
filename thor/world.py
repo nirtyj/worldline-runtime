@@ -293,6 +293,21 @@ class ThorWorld:
                         rotation=dict(x=0, y=yaw, z=0), horizon=horizon, standing=True)
         return bool(ev.metadata["lastActionSuccess"])
 
+    def pickup_at(self, x: float, y: float, z: float, radius: float = 0.3) -> tuple[bool, str]:
+        """Close the hand at that point: the nearest pickupable thing within radius, or nothing."""
+        near = [(math.dist((o["x"], o["z"]), (x, z)), short) for short, o in self.objects().items()
+                if o["where"] != "hand" and abs(o["y"] - y) < 0.6]
+        if not near or min(near)[0] > radius:
+            return False, "the hand closed on nothing"
+        return self.pickup(min(near)[1])
+
+    def camera(self) -> dict[str, Any]:
+        """The head camera: THOR's field of view (90 degrees) is vertical."""
+        h, w = self.event.frame.shape[:2]
+        cam = self.event.metadata.get("cameraPosition") or {}
+        return {"w": w, "h": h, "vfov": 90.0, "hfov": math.degrees(2 * math.atan(math.tan(math.radians(45.0)) * w / h)),
+                "height": float(cam.get("y", self.layout.y + 0.675 if self.layout else 1.575))}
+
     def pickup(self, short: str) -> tuple[bool, str]:
         ev = self._step(action="PickupObject", objectId=self.layout.obj_ids[short], forceAction=True)
         ok = bool(ev.metadata["lastActionSuccess"])
@@ -373,9 +388,11 @@ class ThorWorld:
             o = by_id.get(tid)
             if o is None:
                 continue
+            box = (o.get("axisAlignedBoundingBox") or {}).get("size") or {}
             out[short] = {"type": snake(o["objectType"]), "label": words(o["objectType"]),
                           "where": where_of(lay, _placed(o), lookup), "x": o["position"]["x"], "z": o["position"]["z"],
-                          "y": o["position"]["y"], "visible": self._seen(o, dets, REACH_M)}
+                          "y": o["position"]["y"], "visible": self._seen(o, dets, REACH_M),
+                          "size": (box.get("x", 0.12), box.get("y", 0.12), box.get("z", 0.12))}
         return out
 
     def landmarks(self) -> dict[str, dict[str, Any]]:
